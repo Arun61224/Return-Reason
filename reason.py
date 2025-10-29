@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 
 # 1. Aapke diye gaye column names ka mapping
-# Yeh Streamlit ko batayega ki kaun si file se kaun sa column uthana hai
 COLUMN_MAPPING = {
     'flipkart': {
         'sku_col': 'SKU',
@@ -22,9 +21,7 @@ COLUMN_MAPPING = {
     }
 }
 
-# 2. File processing function (yeh data ko clean aur combine karega)
-# @st.cache_data ensures ki files baar-baar process na ho
-@st.cache_data
+# 2. File processing function (BINA @st.cache_data ke)
 def process_files(uploaded_files):
     all_data_list = []
     
@@ -48,8 +45,9 @@ def process_files(uploaded_files):
                 mapping = COLUMN_MAPPING[platform]
                 
                 # File ko read karo (Excel ya CSV)
+                # 'openpyxl' is required for .xlsx
                 if filename.endswith('.xlsx'):
-                    df = pd.read_excel(uploaded_file)
+                    df = pd.read_excel(uploaded_file, engine='openpyxl')
                 else:
                     df = pd.read_csv(uploaded_file)
                 
