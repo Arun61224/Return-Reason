@@ -185,24 +185,24 @@ if uploaded_files:
                 all_skus_count = filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
                 all_skus_count.columns = ['SKU', 'Total Quantity']
                 
-                # Dropdown ke liye count add karo
+                # Add count to dropdown
                 all_skus_count['SKU_with_Count'] = all_skus_count['SKU'] + " (" + all_skus_count['Total Quantity'].astype(str) + ")"
                 
                 sku_list_for_dropdown = ["Select an SKU to filter..."] + list(all_skus_count['SKU_with_Count'])
                 sku_search = st.selectbox("Search/Select SKU:", options=sku_list_for_dropdown, key="sku_search")
                 
-                # --- UPDATE: Sirf 'SKU' column dikhao ---
-                # Pehle display ke liye table bana lo
-                df_to_display_sku = all_skus_count[['SKU']]
+                # --- UPDATE: Show 'SKU' and 'Total Quantity' ---
+                # Create the table to display
+                df_to_display_sku = all_skus_count[['SKU', 'Total Quantity']] # <-- RE-ADDED 'Total Quantity'
 
                 if sku_search != "Select an SKU to filter...":
-                    # Selection se original SKU naam nikalo
+                    # Get the original SKU name from the selection
                     selected_sku_name = all_skus_count[all_skus_count['SKU_with_Count'] == sku_search]['SKU'].values[0]
-                    # Ab display table ko filter karo
+                    # Filter the display table
                     filtered_sku_df = df_to_display_sku[df_to_display_sku['SKU'] == selected_sku_name]
                     st.dataframe(filtered_sku_df, use_container_width=True, height=500)
                 else:
-                    # Poori table dikhao (sirf SKU column ke saath)
+                    # Show the full table
                     st.dataframe(df_to_display_sku, use_container_width=True, height=500)
                 # --- END OF UPDATE ---
 
@@ -211,24 +211,24 @@ if uploaded_files:
                 all_reasons_count = filtered_df.groupby('Final_Reason')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
                 all_reasons_count.columns = ['Reason', 'Total Quantity']
                 
-                # Dropdown ke liye count add karo
+                # Add count to dropdown
                 all_reasons_count['Reason_with_Count'] = all_reasons_count['Reason'] + " (" + all_reasons_count['Total Quantity'].astype(str) + ")"
                 
                 reason_list_for_dropdown = ["Select a Reason to filter..."] + list(all_reasons_count['Reason_with_Count'])
                 reason_search = st.selectbox("Search/Select Reason:", options=reason_list_for_dropdown, key="reason_search")
                 
-                # --- UPDATE: Sirf 'Reason' column dikhao ---
-                # Pehle display ke liye table bana lo
-                df_to_display_reason = all_reasons_count[['Reason']]
+                # --- UPDATE: Show 'Reason' and 'Total Quantity' ---
+                # Create the table to display
+                df_to_display_reason = all_reasons_count[['Reason', 'Total Quantity']] # <-- RE-ADDED 'Total Quantity'
                 
                 if reason_search != "Select a Reason to filter...":
-                    # Selection se original Reason naam nikalo
+                    # Get the original Reason name from the selection
                     selected_reason_name = all_reasons_count[all_reasons_count['Reason_with_Count'] == reason_search]['Reason'].values[0]
-                    # Ab display table ko filter karo
+                    # Filter the display table
                     filtered_reason_df = df_to_display_reason[df_to_display_reason['Reason'] == selected_reason_name]
                     st.dataframe(filtered_reason_df, use_container_width=True, height=500)
                 else:
-                    # Poori table dikhao (sirf Reason column ke saath)
+                    # Show the full table
                     st.dataframe(df_to_display_reason, use_container_width=True, height=500)
                 # --- END OF UPDATE ---
             
