@@ -4,7 +4,9 @@ import pandas as pd
 # 1. Aapke diye gaye column names ka mapping
 COLUMN_MAPPING = {
     'flipkart': {
-        'sku_col': 'SKU',
+        # --- UPDATE YAHAN KIYA HAI ---
+        'sku_col': 'sku',  # 'SKU' ko 'sku' (lowercase) kar diya hai
+        # -----------------------------
         'reason_col': 'Retrun Sub-reason'
     },
     'ajio': {
@@ -39,6 +41,7 @@ def process_files(uploaded_files):
             platform = 'ajio'
         
         if platform:
+            df = None # Initialize df here
             try:
                 # Platform ke hisaab se mapping nikalo
                 mapping = COLUMN_MAPPING[platform]
@@ -49,9 +52,9 @@ def process_files(uploaded_files):
                 else:
                     df = pd.read_csv(uploaded_file)
                 
-                # --- NAYA CODE: Extra spaces hatane ke liye ---
+                # --- Extra spaces hatane ke liye ---
                 df.columns = df.columns.str.strip()
-                # ----------------------------------------------
+                # ------------------------------------
                 
                 # Sirf zaroori columns select karo aur rename karo
                 temp_df = df[[mapping['sku_col'], mapping['reason_col']]].copy()
@@ -63,14 +66,15 @@ def process_files(uploaded_files):
                 temp_df['Platform'] = platform.capitalize()
                 all_data_list.append(temp_df)
 
-            # --- NAYA CODE: Error ko behtar tareeke se dikhane ke liye ---
+            # --- Error ko behtar tareeke se dikhane ke liye ---
             except KeyError as e:
                 st.error(f"Error processing {filename}: Column {e} nahi mila.")
-                st.error(f"File ke andar yeh columns mile hain: {list(df.columns)}")
+                if df is not None:
+                    st.error(f"File ke andar yeh columns mile hain: {list(df.columns)}")
                 st.warning("Please code mein 'COLUMN_MAPPING' ko upar di gayi list ke hisaab se theek karo.")
             # -----------------------------------------------------------
             except Exception as e:
-                st.error(f"Error processing {filename}: {e}. Check other column names.")
+                st.error(f"Error processing {filename}: {e}.")
                 
     if not all_data_list:
         return pd.DataFrame(columns=['Final_SKU', 'Final_Reason', 'Platform'])
