@@ -1,3 +1,5 @@
+# CODE POORA ENGLISH MEIN HAI, jaisa aapne kaha tha
+
 import streamlit as st
 import pandas as pd
 
@@ -11,7 +13,6 @@ COLUMN_MAPPING = {
         'sku_col': 'SELLER SKU',
         'reason_col': 'Cust Return Reason'
     },
-    # The internal key is still 'amazon' for file detection
     'amazon': {
         'sku_col': 'sku',
         'reason_col': 'reason'
@@ -26,8 +27,7 @@ COLUMN_MAPPING = {
     }
 }
 
-# --- NEW: Mapping for display names ---
-# We use this to set the label in the dashboard
+# Mapping for display names
 DISPLAY_NAME_MAPPING = {
     'amazon': 'Amazon Warehouse',
     'flipkart': 'Flipkart',
@@ -35,7 +35,6 @@ DISPLAY_NAME_MAPPING = {
     'meesho': 'Meesho',
     'firstcry': 'Firstcry'
 }
-# --------------------------------------
 
 # 2. File processing function
 def process_files(uploaded_files):
@@ -58,49 +57,39 @@ def process_files(uploaded_files):
             platform = 'firstcry'
         
         if platform:
-            df = None # Initialize df here
+            df = None
             try:
-                # Get mapping based on platform
                 mapping = COLUMN_MAPPING[platform]
                 
-                # Read the file (Excel or CSV)
                 if filename.endswith('.xlsx'):
                     df = pd.read_excel(uploaded_file, engine='openpyxl')
                 else:
                     df = pd.read_csv(uploaded_file)
                 
-                # --- To remove extra spaces from column names ---
                 df.columns = df.columns.str.strip()
-                # ------------------------------------------------
                 
-                # Select only necessary columns and rename them
                 temp_df = df[[mapping['sku_col'], mapping['reason_col']]].copy()
                 temp_df.rename(columns={
                     mapping['sku_col']: 'Final_SKU',
                     mapping['reason_col']: 'Final_Reason'
                 }, inplace=True)
                 
-                # --- UPDATED: Use display name mapping ---
                 display_name = DISPLAY_NAME_MAPPING.get(platform, platform.capitalize())
                 temp_df['Platform'] = display_name
-                # ------------------------------------------
                 
                 all_data_list.append(temp_df)
 
-            # --- To display errors better ---
             except KeyError as e:
                 st.error(f"Error processing {filename}: Column {e} not found.")
                 if df is not None:
                     st.error(f"Columns found in the file: {list(df.columns)}")
-                st.warning("Please correct the 'COLUMN_MAPPING' in the code based on the column list above.")
-            # ---------------------------------
+                st.warning("Please correct the 'COLUMN_MAPPING' in the code.")
             except Exception as e:
                 st.error(f"Error processing {filename}: {e}.")
                 
     if not all_data_list:
         return pd.DataFrame(columns=['Final_SKU', 'Final_Reason', 'Platform'])
 
-    # Combine all data into one final DataFrame
     master_df = pd.concat(all_data_list, ignore_index=True)
     master_df.dropna(subset=['Final_SKU', 'Final_Reason'], inplace=True)
     master_df['Final_SKU'] = master_df['Final_SKU'].astype(str)
@@ -114,13 +103,11 @@ st.title("🛍️ Online Seller Return Analysis Dashboard")
 
 # 3. File Uploader
 st.header("Step 1: Upload Files")
-# --- UPDATED: File uploader text ---
 uploaded_files = st.file_uploader(
     "Upload all your return reports (Amazon Warehouse, Flipkart, Ajio, Meesho, Firstcry)",
     accept_multiple_files=True,
     type=['xlsx', 'csv']
 )
-# ------------------------------------
 
 # 4. When files are uploaded, show the dashboard
 if uploaded_files:
@@ -133,7 +120,6 @@ if uploaded_files:
         # --- Sidebar Filters ---
         st.sidebar.header("Filters")
         
-        # Platform filter
         all_platforms = master_df['Platform'].unique()
         selected_platforms = st.sidebar.multiselect(
             "Select Platform(s)",
@@ -141,7 +127,6 @@ if uploaded_files:
             default=all_platforms
         )
         
-        # SKU filter
         all_skus = sorted(master_df['Final_SKU'].unique())
         selected_sku = st.sidebar.selectbox(
             "Select SKU for Deep-Dive",
@@ -150,39 +135,41 @@ if uploaded_files:
             placeholder="Type or select an SKU..."
         )
 
-        # Filtered DataFrame based on sidebar selections
         filtered_df = master_df[
             (master_df['Platform'].isin(selected_platforms))
         ]
         
         # --- Dashboard UI ---
         
-        # If no specific SKU is selected
         if not selected_sku:
             st.header("Overall Return Analysis")
             st.info("Select an SKU from the sidebar to see a detailed breakdown.")
             
             col1, col2 = st.columns(2)
             
+            # --- UPDATE: Changed from Top 10 Chart to Full Table ---
             with col1:
-                st.subheader("Top 10 Most Returned SKUs")
-                top_skus = filtered_df['Final_SKU'].value_counts().head(10)
-                st.bar_chart(top_skus)
+                st.subheader("All Returned SKUs (by count)")
+                all_skus_count = filtered_df['Final_SKU'].value_counts().reset_index()
+                all_skus_count.columns = ['SKU', 'Count']
+                st.dataframe(all_skus_count, use_container_width=True, height=500)
 
             with col2:
-                st.subheader("Top 10 Return Reasons (Overall)")
-                top_reasons = filtered_df['Final_Reason'].value_counts().head(10)
-                st.bar_chart(top_reasons)
+                st.subheader("All Return Reasons (by count)")
+                all_reasons_count = filtered_df['Final_Reason'].value_counts().reset_index()
+                all_reasons_count.columns = ['Reason', 'Count']
+                st.dataframe(all_reasons_count, use_container_width=True, height=500)
+            # -----------------------------------------------------
             
             st.subheader("Returns by Platform")
-            platform_counts = filtered_df['Platform'].value_counts()
-            st.bar_chart(platform_counts)
+            platform_counts = filtered_df['Platform'].value_counts().reset_index()
+            platform_counts.columns = ['Platform', 'Count']
+            st.dataframe(platform_counts, use_container_width=True)
         
-        # If a specific SKU IS selected
         else:
+            # Yeh section same hai, kyunki yahan data already filtered hai
             st.header(f"Deep-Dive for SKU: {selected_sku}")
             
-            # Filter data for that SKU only
             sku_specific_df = filtered_df[filtered_df['Final_SKU'] == selected_sku]
             
             total_returns = sku_specific_df.shape[0]
@@ -193,12 +180,12 @@ if uploaded_files:
             with col1:
                 st.subheader("Return Reasons")
                 reason_counts = sku_specific_df['Final_Reason'].value_counts()
-                st.bar_chart(reason_counts)
+                st.bar_chart(reason_counts) # Chart yahan theek hai
             
             with col2:
                 st.subheader("Returns by Platform")
                 platform_counts = sku_specific_df['Platform'].value_counts()
-                st.bar_chart(platform_counts)
+                st.bar_chart(platform_counts) # Chart yahan theek hai
                 
             st.subheader("Raw Return Data for this SKU")
             st.dataframe(sku_specific_df)
