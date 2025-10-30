@@ -134,14 +134,13 @@ def process_files(uploaded_files):
 st.set_page_config(layout="wide")
 st.title("🛍️ Online Seller Return Analysis Dashboard")
 
-# 3. File Uploader --- UPDATE: MOVED TO SIDEBAR ---
+# 3. File Uploader --- MOVED TO SIDEBAR ---
 st.sidebar.header("Step 1: Upload Files")
 uploaded_files = st.sidebar.file_uploader(
     "Upload all your return reports",
     accept_multiple_files=True,
     type=['xlsx', 'csv']
 )
-# --- END OF UPDATE ---
 
 # 4. When files are uploaded, show the dashboard
 if uploaded_files:
@@ -152,7 +151,7 @@ if uploaded_files:
         st.divider()
 
         # --- Sidebar Filters ---
-        st.sidebar.header("Step 2: Filters") # Renamed this
+        st.sidebar.header("Step 2: Filters") 
         
         all_platforms = master_df['Platform'].unique()
         selected_platforms = st.sidebar.multiselect(
@@ -179,23 +178,37 @@ if uploaded_files:
             st.header("Overall Return Analysis")
             st.info("Select an SKU from the sidebar for a detailed breakdown.")
             
+            # --- UPDATE: NAYA LOGIC (CROSS-FILTERING) ---
+            
             # 1. Pehle teeno filters ke liye data banao
             sku_data = filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
             sku_data.columns = ['SKU', 'Total Quantity']
             sku_data['SKU_with_Count'] = sku_data['SKU'] + " (" + sku_data['Total Quantity'].astype(str) + ")"
-            sku_list_for_dropdown = ["Select an SKU..."] + list(sku_data['SKU_with_Count'])
             
             reason_data = filtered_df.groupby('Final_Reason')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
             reason_data.columns = ['Reason', 'Total Quantity']
             reason_data['Reason_with_Count'] = reason_data['Reason'] + " (" + reason_data['Total Quantity'].astype(str) + ")"
-            reason_list_for_dropdown = ["Select a Reason..."] + list(reason_data['Reason_with_Count'])
             
             platform_data = filtered_df.groupby('Platform')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
             platform_data.columns = ['Platform', 'Total Quantity']
             platform_data['Platform_with_Count'] = platform_data['Platform'] + " (" + platform_data['Total Quantity'].astype(str) + ")"
-            platform_list_dropdown = ["Select a Platform..."] + list(platform_data['Platform_with_Count'])
 
-            # 2. Ab teeno filters ko TOP par dikhao
+            # 2. Dropdown lists banao
+            sku_list_for_dropdown = ["Select an SKU..."] + list(sku_data['SKU_with_Count'])
+            reason_list_for_dropdown = ["Select a Reason..."] + list(reason_data['Reason_with_Count'])
+            platform_list_dropdown = ["Select a Platform..."] + list(platform_data['Platform_with_Count'])
+            
+            # --- FIX: Session state ko check karo ---
+            # Agar session state ki value nayi list mein nahi hai, toh reset karo
+            if 'sku_search' not in st.session_state or st.session_state.sku_search not in sku_list_for_dropdown:
+                st.session_state.sku_search = "Select an SKU..."
+            if 'reason_search' not in st.session_state or st.session_state.reason_search not in reason_list_for_dropdown:
+                st.session_state.reason_search = "Select a Reason..."
+            if 'platform_search' not in st.session_state or st.session_state.platform_search not in platform_list_dropdown:
+                st.session_state.platform_search = "Select a Platform..."
+            # --- END OF FIX ---
+
+            # 3. Ab teeno filters ko TOP par dikhao
             st.subheader("Cross-Filters")
             col1, col2, col3 = st.columns(3)
             with col1:
@@ -205,7 +218,7 @@ if uploaded_files:
             with col3:
                 platform_search = st.selectbox("Search/Select Platform:", options=platform_list_dropdown, key="platform_search")
 
-            # 3. Ab ek FINAL filtered DataFrame banao
+            # 4. Ab ek FINAL filtered DataFrame banao
             final_filtered_df = filtered_df.copy()
             
             if sku_search != "Select an SKU...":
@@ -223,7 +236,7 @@ if uploaded_files:
             st.divider()
             st.subheader("Filtered Results")
 
-            # 4. Ab neeche teeno tables dikhao
+            # 5. Ab neeche teeno tables dikhao
             res1, res2, res3 = st.columns(3)
             
             with res1:
@@ -242,7 +255,9 @@ if uploaded_files:
                 st.caption("Filtered Platforms")
                 platform_display_data = final_filtered_df.groupby('Platform')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
                 platform_display_data.columns = ['Platform', 'Total Quantity']
-                st.dataframe(platform_display_data, use_container_width=True, height=5Player)
+                st.dataframe(platform_display_data, use_container_width=True, height=500)
+            
+            # --- END OF UPDATE ---
         
         else:
             # Yeh part same hai (jab sidebar se SKU select karte hain)
