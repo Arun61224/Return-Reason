@@ -1,10 +1,10 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import zipfile  # <-- Naya import
-import io         # <-- Naya import
+import zipfile  # ZIP file processing
+import io         # Memory I/O
 
-# 1. Column name mapping (Same as before)
+# 1. Column name mapping provided by you
 COLUMN_MAPPING = {
     'flipkart': {
         'sku_col': 'SKU',
@@ -32,7 +32,7 @@ COLUMN_MAPPING = {
     }
 }
 
-# Mapping for display names (Same as before)
+# Mapping for display names
 DISPLAY_NAME_MAPPING = {
     'amazon': 'Amazon Warehouse',
     'flipkart': 'Flipkart',
@@ -41,7 +41,7 @@ DISPLAY_NAME_MAPPING = {
     'firstcry': 'Firstcry'
 }
 
-# --- NAYA HELPER FUNCTION: Platform pehchanne ke liye ---
+# --- Helper Function: Get platform from filename ---
 def get_platform_from_name(filename_lower):
     if 'amazon' in filename_lower:
         return 'amazon'
@@ -54,15 +54,14 @@ def get_platform_from_name(filename_lower):
     elif 'firstcry' in filename_lower:
         return 'firstcry'
     return None
-# --- END HELPER FUNCTION ---
 
-# --- NAYA HELPER FUNCTION: Data extract karne ke liye ---
+# --- Helper Function: Extract data from a file object ---
 def extract_data(file_object, platform, filename_for_error_msg):
     df = None
     try:
         mapping = COLUMN_MAPPING[platform]
         
-        # File ko read karo (Excel ya CSV)
+        # Read the file (Excel or CSV)
         if filename_for_error_msg.lower().endswith('.xlsx'):
             df = pd.read_excel(file_object, engine='openpyxl')
         else:
@@ -107,10 +106,8 @@ def extract_data(file_object, platform, filename_for_error_msg):
     except Exception as e:
         st.error(f"Error processing {filename_for_error_msg}: {e}.")
         return None
-# --- END HELPER FUNCTION ---
 
-
-# 2. File processing function (Ab ZIP ko handle karega)
+# 2. Main File processing function (Handles ZIP files)
 def process_files(uploaded_files):
     all_data_list = []
     
@@ -126,22 +123,22 @@ def process_files(uploaded_files):
             st.error(f"Error getting file name: {e}")
             continue 
         
-        # --- NAYA LOGIC: ZIP FILE CHECK ---
+        # --- Check for ZIP file ---
         if filename.endswith('.zip'):
             st.info(f"Processing ZIP file: {uploaded_file.name}")
             try:
-                # Zip file ko memory mein read karo
+                # Read zip file in memory
                 with zipfile.ZipFile(io.BytesIO(uploaded_file.getvalue()), 'r') as zf:
-                    # Zip ke andar ki saari files ke liye loop chalao
+                    # Loop over all files inside the zip
                     for internal_filename in zf.namelist():
-                        # Mac ke faltu files ko ignore karo
+                        # Ignore Mac system files
                         if internal_filename.startswith('__MACOSX') or not (internal_filename.lower().endswith('.csv') or internal_filename.lower().endswith('.xlsx')):
                             continue
                         
                         platform = get_platform_from_name(internal_filename.lower())
                         
                         if platform:
-                            # Zip ke andar ki file ko process karo
+                            # Process the file from inside the zip
                             with zf.open(internal_filename) as f:
                                 temp_df = extract_data(f, platform, internal_filename)
                                 if temp_df is not None:
@@ -151,7 +148,7 @@ def process_files(uploaded_files):
             except Exception as e:
                 st.error(f"Failed to process ZIP file {uploaded_file.name}: {e}")
         
-        # --- PURANA LOGIC: Single file check ---
+        # --- Logic for Single files ---
         elif filename.endswith('.csv') or filename.endswith('.xlsx'):
             platform = get_platform_from_name(filename)
             if platform:
@@ -160,7 +157,6 @@ def process_files(uploaded_files):
                     all_data_list.append(temp_df)
             else:
                 st.warning(f"Skipping file (platform not recognized): {filename}")
-        # --- END OF UPDATE ---
                 
     if not all_data_list:
         return pd.DataFrame(columns=['Final_SKU', 'Final_Reason', 'Platform', 'Final_Qty'])
@@ -176,14 +172,13 @@ def process_files(uploaded_files):
 st.set_page_config(layout="wide")
 st.title("🛍️ Online Seller Return Analysis Dashboard")
 
-# 3. File Uploader --- UPDATE: ZIP add kiya hai ---
+# 3. File Uploader (Only item in sidebar)
 st.sidebar.header("Step 1: Upload Files")
 uploaded_files = st.sidebar.file_uploader(
     "Upload .csv, .xlsx, or a single .zip file",
     accept_multiple_files=True,
-    type=['xlsx', 'csv', 'zip'] # <-- 'zip' add kiya
+    type=['xlsx', 'csv', 'zip']
 )
-# --- END OF UPDATE ---
 
 # 4. When files are uploaded, show the dashboard
 if uploaded_files:
@@ -193,134 +188,92 @@ if uploaded_files:
         st.success(f"Successfully processed {len(uploaded_files)} files/archives. Total returned items: {master_df['Final_Qty'].sum()}")
         st.divider()
 
-        # --- Sidebar Filters ---
-        st.sidebar.header("Step 2: Filters") 
+        # --- UPDATE: Sidebar filters hata diye ---
+        # Ab 'filtered_df' seedha 'master_df' hai
+        filtered_df = master_df.copy()
         
-        all_platforms = master_df['Platform'].unique()
-        selected_platforms = st.sidebar.multiselect(
-            "Select Platform(s)",
-            options=all_platforms,
-            default=all_platforms
-        )
+        st.header("Overall Return Analysis")
         
-        all_skus = sorted(master_df['Final_SKU'].unique())
-        selected_sku = st.sidebar.selectbox(
-            "Select SKU for Deep-Dive",
-            options=all_skus,
-            index=None,
-            placeholder="Type or select an SKU..."
-        )
-
-        filtered_df = master_df[
-            (master_df['Platform'].isin(selected_platforms))
-        ]
+        # --- Cross-Filtering Logic (Pehle jaisa) ---
         
-        # --- Dashboard UI (Same as before) ---
+        # 1. Pehle teeno filters ke liye data banao
+        sku_data = filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
+        sku_data.columns = ['SKU', 'Total Quantity']
+        sku_data['SKU_with_Count'] = sku_data['SKU'] + " (" + sku_data['Total Quantity'].astype(str) + ")"
         
-        if not selected_sku:
-            st.header("Overall Return Analysis")
-            st.info("Select an SKU from the sidebar for a detailed breakdown.")
-            
-            # 1. Pehle teeno filters ke liye data banao
-            sku_data = filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
-            sku_data.columns = ['SKU', 'Total Quantity']
-            sku_data['SKU_with_Count'] = sku_data['SKU'] + " (" + sku_data['Total Quantity'].astype(str) + ")"
-            
-            reason_data = filtered_df.groupby('Final_Reason')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
-            reason_data.columns = ['Reason', 'Total Quantity']
-            reason_data['Reason_with_Count'] = reason_data['Reason'] + " (" + reason_data['Total Quantity'].astype(str) + ")"
-            
-            platform_data = filtered_df.groupby('Platform')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
-            platform_data.columns = ['Platform', 'Total Quantity']
-            platform_data['Platform_with_Count'] = platform_data['Platform'] + " (" + platform_data['Total Quantity'].astype(str) + ")"
-
-            # 2. Dropdown lists banao
-            sku_list_for_dropdown = ["Select an SKU..."] + list(sku_data['SKU_with_Count'])
-            reason_list_for_dropdown = ["Select a Reason..."] + list(reason_data['Reason_with_Count'])
-            platform_list_dropdown = ["Select a Platform..."] + list(platform_data['Platform_with_Count'])
-            
-            # Session state ko check karo
-            if 'sku_search' not in st.session_state or st.session_state.sku_search not in sku_list_for_dropdown:
-                st.session_state.sku_search = "Select an SKU..."
-            if 'reason_search' not in st.session_state or st.session_state.reason_search not in reason_list_for_dropdown:
-                st.session_state.reason_search = "Select a Reason..."
-            if 'platform_search' not in st.session_state or st.session_state.platform_search not in platform_list_dropdown:
-                st.session_state.platform_search = "Select a Platform..."
-
-            # 3. Ab teeno filters ko TOP par dikhao
-            st.subheader("Cross-Filters")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                sku_search = st.selectbox("Search/Select SKU:", options=sku_list_for_dropdown, key="sku_search")
-            with col2:
-                reason_search = st.selectbox("Search/Select Reason:", options=reason_list_for_dropdown, key="reason_search")
-            with col3:
-                platform_search = st.selectbox("Search/Select Platform:", options=platform_list_dropdown, key="platform_search")
-
-            # 4. Ab ek FINAL filtered DataFrame banao
-            final_filtered_df = filtered_df.copy()
-            
-            if sku_search != "Select an SKU...":
-                selected_sku_name = sku_data[sku_data['SKU_with_Count'] == sku_search]['SKU'].values[0]
-                final_filtered_df = final_filtered_df[final_filtered_df['Final_SKU'] == selected_sku_name]
-            
-            if reason_search != "Select a Reason...":
-                selected_reason_name = reason_data[reason_data['Reason_with_Count'] == reason_search]['Reason'].values[0]
-                final_filtered_df = final_filtered_df[final_filtered_df['Final_Reason'] == selected_reason_name]
-                
-            if platform_search != "Select a Platform...":
-                selected_platform_name = platform_data[platform_data['Platform_with_Count'] == platform_search]['Platform'].values[0]
-                final_filtered_df = final_filtered_df[final_filtered_df['Platform'] == selected_platform_name]
-                
-            st.divider()
-            st.subheader("Filtered Results")
-
-            # 5. Ab neeche teeno tables dikhao
-            res1, res2, res3 = st.columns(3)
-            
-            with res1:
-                st.caption("Filtered SKUs")
-                sku_display_data = final_filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
-                sku_display_data.columns = ['SKU', 'Total Quantity']
-                st.dataframe(sku_display_data, use_container_width=True, height=500)
-                
-            with res2:
-                st.caption("Filtered Reasons")
-                reason_display_data = final_filtered_df.groupby('Final_Reason')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
-                reason_display_data.columns = ['Reason', 'Total Quantity']
-                st.dataframe(reason_display_data, use_container_width=True, height=500)
-                
-            with res3:
-                st.caption("Filtered Platforms")
-                platform_display_data = final_filtered_df.groupby('Platform')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
-                platform_display_data.columns = ['Platform', 'Total Quantity']
-                st.dataframe(platform_display_data, use_container_width=True, height=500)
+        reason_data = filtered_df.groupby('Final_Reason')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
+        reason_data.columns = ['Reason', 'Total Quantity']
+        reason_data['Reason_with_Count'] = reason_data['Reason'] + " (" + reason_data['Total Quantity'].astype(str) + ")"
         
-        else:
-            # Yeh part same hai (jab sidebar se SKU select karte hain)
-            st.header(f"Deep-Dive for SKU: {selected_sku}")
+        platform_data = filtered_df.groupby('Platform')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
+        platform_data.columns = ['Platform', 'Total Quantity']
+        platform_data['Platform_with_Count'] = platform_data['Platform'] + " (" + platform_data['Total Quantity'].astype(str) + ")"
+
+        # 2. Dropdown lists banao
+        sku_list_for_dropdown = ["Select an SKU..."] + list(sku_data['SKU_with_Count'])
+        reason_list_for_dropdown = ["Select a Reason..."] + list(reason_data['Reason_with_Count'])
+        platform_list_dropdown = ["Select a Platform..."] + list(platform_data['Platform_with_Count'])
+        
+        # Session state ko check karo (Error fix)
+        if 'sku_search' not in st.session_state or st.session_state.sku_search not in sku_list_for_dropdown:
+            st.session_state.sku_search = "Select an SKU..."
+        if 'reason_search' not in st.session_state or st.session_state.reason_search not in reason_list_for_dropdown:
+            st.session_state.reason_search = "Select a Reason..."
+        if 'platform_search' not in st.session_state or st.session_state.platform_search not in platform_list_dropdown:
+            st.session_state.platform_search = "Select a Platform..."
+
+        # 3. Ab teeno filters ko TOP par dikhao
+        st.subheader("Cross-Filters")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            sku_search = st.selectbox("Search/Select SKU:", options=sku_list_for_dropdown, key="sku_search")
+        with col2:
+            reason_search = st.selectbox("Search/Select Reason:", options=reason_list_for_dropdown, key="reason_search")
+        with col3:
+            platform_search = st.selectbox("Search/Select Platform:", options=platform_list_dropdown, key="platform_search")
+
+        # 4. Ab ek FINAL filtered DataFrame banao
+        final_filtered_df = filtered_df.copy()
+        
+        if sku_search != "Select an SKU...":
+            selected_sku_name = sku_data[sku_data['SKU_with_Count'] == sku_search]['SKU'].values[0]
+            final_filtered_df = final_filtered_df[final_filtered_df['Final_SKU'] == selected_sku_name]
+        
+        if reason_search != "Select a Reason...":
+            selected_reason_name = reason_data[reason_data['Reason_with_Count'] == reason_search]['Reason'].values[0]
+            final_filtered_df = final_filtered_df[final_filtered_df['Final_Reason'] == selected_reason_name]
             
-            sku_specific_df = filtered_df[filtered_df['Final_SKU'] == selected_sku]
+        if platform_search != "Select a Platform...":
+            selected_platform_name = platform_data[platform_data['Platform_with_Count'] == platform_search]['Platform'].values[0]
+            final_filtered_df = final_filtered_df[final_filtered_df['Platform'] == selected_platform_name]
             
-            total_returns = sku_specific_df['Final_Qty'].sum()
-            st.metric("Total Returned Qty for this SKU", total_returns)
+        st.divider()
+        st.subheader("Filtered Results")
+
+        # 5. Ab neeche teeno tables dikhao
+        res1, res2, res3 = st.columns(3)
+        
+        with res1:
+            st.caption("Filtered SKUs")
+            sku_display_data = final_filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
+            sku_display_data.columns = ['SKU', 'Total Quantity']
+            st.dataframe(sku_display_data, use_container_width=True, height=500)
             
-            col1, col2 = st.columns(2)
+        with res2:
+            st.caption("Filtered Reasons")
+            reason_display_data = final_filtered_df.groupby('Final_Reason')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
+            reason_display_data.columns = ['Reason', 'Total Quantity']
+            st.dataframe(reason_display_data, use_container_width=True, height=500)
             
-            with col1:
-                st.subheader("Return Reasons")
-                reason_counts = sku_specific_df.groupby('Final_Reason')['Final_Qty'].sum().sort_values(ascending=False)
-                st.bar_chart(reason_counts) 
-            
-            with col2:
-                st.subheader("Returns by Platform")
-                platform_counts = sku_specific_df.groupby('Platform')['Final_Qty'].sum().sort_values(ascending=False)
-                st.bar_chart(platform_counts)
-                
-            st.subheader("Raw Return Data for this SKU")
-            st.dataframe(sku_specific_df[['Final_SKU', 'Final_Reason', 'Platform', 'Final_Qty']])
+        with res3:
+            st.caption("Filtered Platforms")
+            platform_display_data = final_filtered_df.groupby('Platform')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
+            platform_display_data.columns = ['Platform', 'Total Quantity']
+            st.dataframe(platform_display_data, use_container_width=True, height=500)
 
     else:
-        st.warning("No data found after processing. Please check your files.")
+        # Yeh tab dikhega jab file upload hai, lekin data process nahi hua
+        st.warning("No data found after processing. Please check your files or column names.")
 else:
+    # Yeh default message hai
     st.info("Please upload your return files from the sidebar to start the analysis.")
