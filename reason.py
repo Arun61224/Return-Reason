@@ -134,13 +134,14 @@ def process_files(uploaded_files):
 st.set_page_config(layout="wide")
 st.title("🛍️ Online Seller Return Analysis Dashboard")
 
-# 3. File Uploader
-st.header("Step 1: Upload Files")
-uploaded_files = st.file_uploader(
-    "Upload all your return reports (Amazon Warehouse, Flipkart, Ajio, Meesho, Firstcry)",
+# 3. File Uploader --- UPDATE: MOVED TO SIDEBAR ---
+st.sidebar.header("Step 1: Upload Files")
+uploaded_files = st.sidebar.file_uploader(
+    "Upload all your return reports",
     accept_multiple_files=True,
     type=['xlsx', 'csv']
 )
+# --- END OF UPDATE ---
 
 # 4. When files are uploaded, show the dashboard
 if uploaded_files:
@@ -151,7 +152,7 @@ if uploaded_files:
         st.divider()
 
         # --- Sidebar Filters ---
-        st.sidebar.header("Filters")
+        st.sidebar.header("Step 2: Filters") # Renamed this
         
         all_platforms = master_df['Platform'].unique()
         selected_platforms = st.sidebar.multiselect(
@@ -176,11 +177,9 @@ if uploaded_files:
         
         if not selected_sku:
             st.header("Overall Return Analysis")
-            st.info("Select an SKU from the sidebar to see a detailed breakdown.")
+            st.info("Select an SKU from the sidebar for a detailed breakdown.")
             
-            # --- UPDATE: NAYA LOGIC (CROSS-FILTERING) ---
-            
-            # 1. Pehle teeno filters ke liye data banao (original filtered_df se)
+            # 1. Pehle teeno filters ke liye data banao
             sku_data = filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
             sku_data.columns = ['SKU', 'Total Quantity']
             sku_data['SKU_with_Count'] = sku_data['SKU'] + " (" + sku_data['Total Quantity'].astype(str) + ")"
@@ -224,7 +223,7 @@ if uploaded_files:
             st.divider()
             st.subheader("Filtered Results")
 
-            # 4. Ab neeche teeno tables dikhao (is naye final_filtered_df ke basis par)
+            # 4. Ab neeche teeno tables dikhao
             res1, res2, res3 = st.columns(3)
             
             with res1:
@@ -243,9 +242,7 @@ if uploaded_files:
                 st.caption("Filtered Platforms")
                 platform_display_data = final_filtered_df.groupby('Platform')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
                 platform_display_data.columns = ['Platform', 'Total Quantity']
-                st.dataframe(platform_display_data, use_container_width=True, height=500)
-            
-            # --- END OF UPDATE ---
+                st.dataframe(platform_display_data, use_container_width=True, height=5Player)
         
         else:
             # Yeh part same hai (jab sidebar se SKU select karte hain)
@@ -274,4 +271,5 @@ if uploaded_files:
     else:
         st.warning("No data found after processing. Please check your files.")
 else:
-    st.info("Please upload your return files to start the analysis.")
+    # Yeh message ab main page par dikhega jab tak file upload nahi hoti
+    st.info("Please upload your return files from the sidebar to start the analysis.")
