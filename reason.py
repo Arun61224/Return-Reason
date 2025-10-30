@@ -185,17 +185,18 @@ if uploaded_files:
                 all_skus_count = filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
                 all_skus_count.columns = ['SKU', 'Total Quantity']
                 
-                # --- UPDATE: Changed text_input to selectbox ---
-                # Create a list for the dropdown
-                sku_list_for_dropdown = ["Select an SKU to filter..."] + list(all_skus_count['SKU'])
+                # --- UPDATE: Dropdown mein count add kiya hai ---
+                all_skus_count['SKU_with_Count'] = all_skus_count['SKU'] + " (" + all_skus_count['Total Quantity'].astype(str) + ")"
+                
+                sku_list_for_dropdown = ["Select an SKU to filter..."] + list(all_skus_count['SKU_with_Count'])
                 sku_search = st.selectbox("Search/Select SKU:", options=sku_list_for_dropdown, key="sku_search")
                 
                 if sku_search != "Select an SKU to filter...":
-                    # Filter dataframe based on selection
-                    filtered_sku_df = all_skus_count[all_skus_count['SKU'] == sku_search]
+                    # Selection ke basis pe filter karo
+                    filtered_sku_df = all_skus_count[all_skus_count['SKU_with_Count'] == sku_search]
                     st.dataframe(filtered_sku_df, use_container_width=True, height=500)
                 else:
-                    # Show full dataframe if no selection
+                    # Agar kuch select nahi kiya toh poori list dikhao
                     st.dataframe(all_skus_count, use_container_width=True, height=500)
                 # --- END OF UPDATE ---
 
@@ -204,17 +205,18 @@ if uploaded_files:
                 all_reasons_count = filtered_df.groupby('Final_Reason')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
                 all_reasons_count.columns = ['Reason', 'Total Quantity']
                 
-                # --- UPDATE: Changed text_input to selectbox ---
-                # Create a list for the dropdown
-                reason_list_for_dropdown = ["Select a Reason to filter..."] + list(all_reasons_count['Reason'])
+                # --- UPDATE: Dropdown mein count add kiya hai ---
+                all_reasons_count['Reason_with_Count'] = all_reasons_count['Reason'] + " (" + all_reasons_count['Total Quantity'].astype(str) + ")"
+                
+                reason_list_for_dropdown = ["Select a Reason to filter..."] + list(all_reasons_count['Reason_with_Count'])
                 reason_search = st.selectbox("Search/Select Reason:", options=reason_list_for_dropdown, key="reason_search")
                 
                 if reason_search != "Select a Reason to filter...":
-                    # Filter dataframe based on selection
-                    filtered_reason_df = all_reasons_count[all_reasons_count['Reason'] == reason_search]
+                    # Selection ke basis pe filter karo
+                    filtered_reason_df = all_reasons_count[all_reasons_count['Reason_with_Count'] == reason_search]
                     st.dataframe(filtered_reason_df, use_container_width=True, height=500)
                 else:
-                    # Show full dataframe if no selection
+                    # Agar kuch select nahi kiya toh poori list dikhao
                     st.dataframe(all_reasons_count, use_container_width=True, height=500)
                 # --- END OF UPDATE ---
             
