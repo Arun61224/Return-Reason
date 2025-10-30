@@ -5,9 +5,9 @@ import pandas as pd
 COLUMN_MAPPING = {
     'flipkart': {
         # --- UPDATE YAHAN KIYA HAI ---
-        'sku_col': 'sku',  # 'SKU' ko 'sku' (lowercase) kar diya hai
+        'sku_col': 'SKU',  # 'sku' (lowercase) ko 'SKU' (uppercase) kar diya
+        'reason_col': 'Return Sub-reason' # 'Retrun' ko 'Return' kar diya
         # -----------------------------
-        'reason_col': 'Retrun Sub-reason'
     },
     'ajio': {
         'sku_col': 'SELLER SKU',
