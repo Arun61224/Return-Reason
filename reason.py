@@ -1,8 +1,10 @@
 import streamlit as st
 import pandas as pd
-import numpy as np # We need numpy for data handling
+import numpy as np
+import zipfile  # <-- Naya import
+import io         # <-- Naya import
 
-# 1. Column name mapping provided by you
+# 1. Column name mapping (Same as before)
 COLUMN_MAPPING = {
     'flipkart': {
         'sku_col': 'SKU',
@@ -30,7 +32,7 @@ COLUMN_MAPPING = {
     }
 }
 
-# Mapping for display names
+# Mapping for display names (Same as before)
 DISPLAY_NAME_MAPPING = {
     'amazon': 'Amazon Warehouse',
     'flipkart': 'Flipkart',
@@ -39,14 +41,81 @@ DISPLAY_NAME_MAPPING = {
     'firstcry': 'Firstcry'
 }
 
-# 2. File processing function
+# --- NAYA HELPER FUNCTION: Platform pehchanne ke liye ---
+def get_platform_from_name(filename_lower):
+    if 'amazon' in filename_lower:
+        return 'amazon'
+    elif 'flipkart' in filename_lower:
+        return 'flipkart'
+    elif 'meesho' in filename_lower:
+        return 'meesho'
+    elif 'ajio' in filename_lower:
+        return 'ajio'
+    elif 'firstcry' in filename_lower:
+        return 'firstcry'
+    return None
+# --- END HELPER FUNCTION ---
+
+# --- NAYA HELPER FUNCTION: Data extract karne ke liye ---
+def extract_data(file_object, platform, filename_for_error_msg):
+    df = None
+    try:
+        mapping = COLUMN_MAPPING[platform]
+        
+        # File ko read karo (Excel ya CSV)
+        if filename_for_error_msg.lower().endswith('.xlsx'):
+            df = pd.read_excel(file_object, engine='openpyxl')
+        else:
+            df = pd.read_csv(file_object)
+        
+        df.columns = df.columns.str.strip()
+        
+        qty_col_name = mapping.get('qty_col') 
+        
+        if qty_col_name:
+            cols_to_use = [mapping['sku_col'], mapping['reason_col'], qty_col_name]
+            temp_df = df[cols_to_use].copy()
+            temp_df.rename(columns={
+                mapping['sku_col']: 'Final_SKU',
+                mapping['reason_col']: 'Final_Reason',
+                qty_col_name: 'Final_Qty'
+            }, inplace=True)
+        else:
+            cols_to_use = [mapping['sku_col'], mapping['reason_col']]
+            temp_df = df[cols_to_use].copy()
+            temp_df.rename(columns={
+                mapping['sku_col']: 'Final_SKU',
+                mapping['reason_col']: 'Final_Reason'
+            }, inplace=True)
+            temp_df['Final_Qty'] = 1 
+
+        display_name = DISPLAY_NAME_MAPPING.get(platform, platform.capitalize())
+        temp_df['Platform'] = display_name
+        
+        temp_df['Final_Qty'] = pd.to_numeric(temp_df['Final_Qty'], errors='coerce')
+        temp_df.dropna(subset=['Final_SKU', 'Final_Reason', 'Final_Qty'], inplace=True)
+        temp_df['Final_Qty'] = temp_df['Final_Qty'].astype(int)
+        
+        return temp_df
+
+    except KeyError as e:
+        st.error(f"Error processing {filename_for_error_msg}: Column {e} not found.")
+        if df is not None:
+            st.error(f"Columns found in file: {list(df.columns)}")
+        st.warning("Please correct 'COLUMN_MAPPING' in the code.")
+        return None
+    except Exception as e:
+        st.error(f"Error processing {filename_for_error_msg}: {e}.")
+        return None
+# --- END HELPER FUNCTION ---
+
+
+# 2. File processing function (Ab ZIP ko handle karega)
 def process_files(uploaded_files):
     all_data_list = []
     
     for uploaded_file in uploaded_files:
-        filename = "" # Initialize empty filename
-        
-        # --- ERROR FIX ---
+        filename = ""
         try:
             file_name_attr = uploaded_file.name
             if isinstance(file_name_attr, list):
@@ -56,69 +125,42 @@ def process_files(uploaded_files):
         except Exception as e:
             st.error(f"Error getting file name: {e}")
             continue 
-        # --- END FIX ---
-            
-        platform = None
         
-        # Identify platform from filename
-        if 'amazon' in filename:
-            platform = 'amazon'
-        elif 'flipkart' in filename:
-            platform = 'flipkart'
-        elif 'meesho' in filename:
-            platform = 'meesho'
-        elif 'ajio' in filename:
-            platform = 'ajio'
-        elif 'firstcry' in filename:
-            platform = 'firstcry'
-        
-        if platform:
-            df = None
+        # --- NAYA LOGIC: ZIP FILE CHECK ---
+        if filename.endswith('.zip'):
+            st.info(f"Processing ZIP file: {uploaded_file.name}")
             try:
-                mapping = COLUMN_MAPPING[platform]
-                
-                if filename.endswith('.xlsx'):
-                    df = pd.read_excel(uploaded_file, engine='openpyxl')
-                else:
-                    df = pd.read_csv(uploaded_file)
-                
-                df.columns = df.columns.str.strip()
-                
-                qty_col_name = mapping.get('qty_col') 
-                
-                if qty_col_name:
-                    cols_to_use = [mapping['sku_col'], mapping['reason_col'], qty_col_name]
-                    temp_df = df[cols_to_use].copy()
-                    temp_df.rename(columns={
-                        mapping['sku_col']: 'Final_SKU',
-                        mapping['reason_col']: 'Final_Reason',
-                        qty_col_name: 'Final_Qty'
-                    }, inplace=True)
-                else:
-                    cols_to_use = [mapping['sku_col'], mapping['reason_col']]
-                    temp_df = df[cols_to_use].copy()
-                    temp_df.rename(columns={
-                        mapping['sku_col']: 'Final_SKU',
-                        mapping['reason_col']: 'Final_Reason'
-                    }, inplace=True)
-                    temp_df['Final_Qty'] = 1 
-
-                display_name = DISPLAY_NAME_MAPPING.get(platform, platform.capitalize())
-                temp_df['Platform'] = display_name
-                
-                temp_df['Final_Qty'] = pd.to_numeric(temp_df['Final_Qty'], errors='coerce')
-                temp_df.dropna(subset=['Final_SKU', 'Final_Reason', 'Final_Qty'], inplace=True)
-                temp_df['Final_Qty'] = temp_df['Final_Qty'].astype(int)
-                
-                all_data_list.append(temp_df)
-
-            except KeyError as e:
-                st.error(f"Error processing {filename}: Column {e} not found.")
-                if df is not None:
-                    st.error(f"Columns found in the file: {list(df.columns)}")
-                st.warning("Please correct the 'COLUMN_MAPPING' in the code.")
+                # Zip file ko memory mein read karo
+                with zipfile.ZipFile(io.BytesIO(uploaded_file.getvalue()), 'r') as zf:
+                    # Zip ke andar ki saari files ke liye loop chalao
+                    for internal_filename in zf.namelist():
+                        # Mac ke faltu files ko ignore karo
+                        if internal_filename.startswith('__MACOSX') or not (internal_filename.lower().endswith('.csv') or internal_filename.lower().endswith('.xlsx')):
+                            continue
+                        
+                        platform = get_platform_from_name(internal_filename.lower())
+                        
+                        if platform:
+                            # Zip ke andar ki file ko process karo
+                            with zf.open(internal_filename) as f:
+                                temp_df = extract_data(f, platform, internal_filename)
+                                if temp_df is not None:
+                                    all_data_list.append(temp_df)
+                        else:
+                            st.warning(f"Skipping file in ZIP (platform not recognized): {internal_filename}")
             except Exception as e:
-                st.error(f"Error processing {filename}: {e}.")
+                st.error(f"Failed to process ZIP file {uploaded_file.name}: {e}")
+        
+        # --- PURANA LOGIC: Single file check ---
+        elif filename.endswith('.csv') or filename.endswith('.xlsx'):
+            platform = get_platform_from_name(filename)
+            if platform:
+                temp_df = extract_data(uploaded_file, platform, filename)
+                if temp_df is not None:
+                    all_data_list.append(temp_df)
+            else:
+                st.warning(f"Skipping file (platform not recognized): {filename}")
+        # --- END OF UPDATE ---
                 
     if not all_data_list:
         return pd.DataFrame(columns=['Final_SKU', 'Final_Reason', 'Platform', 'Final_Qty'])
@@ -134,20 +176,21 @@ def process_files(uploaded_files):
 st.set_page_config(layout="wide")
 st.title("🛍️ Online Seller Return Analysis Dashboard")
 
-# 3. File Uploader --- MOVED TO SIDEBAR ---
+# 3. File Uploader --- UPDATE: ZIP add kiya hai ---
 st.sidebar.header("Step 1: Upload Files")
 uploaded_files = st.sidebar.file_uploader(
-    "Upload all your return reports",
+    "Upload .csv, .xlsx, or a single .zip file",
     accept_multiple_files=True,
-    type=['xlsx', 'csv']
+    type=['xlsx', 'csv', 'zip'] # <-- 'zip' add kiya
 )
+# --- END OF UPDATE ---
 
 # 4. When files are uploaded, show the dashboard
 if uploaded_files:
     master_df = process_files(uploaded_files)
     
     if not master_df.empty:
-        st.success(f"Successfully processed {len(uploaded_files)} files. Total returned items: {master_df['Final_Qty'].sum()}")
+        st.success(f"Successfully processed {len(uploaded_files)} files/archives. Total returned items: {master_df['Final_Qty'].sum()}")
         st.divider()
 
         # --- Sidebar Filters ---
@@ -172,13 +215,11 @@ if uploaded_files:
             (master_df['Platform'].isin(selected_platforms))
         ]
         
-        # --- Dashboard UI (Using Qty Sums) ---
+        # --- Dashboard UI (Same as before) ---
         
         if not selected_sku:
             st.header("Overall Return Analysis")
             st.info("Select an SKU from the sidebar for a detailed breakdown.")
-            
-            # --- UPDATE: NAYA LOGIC (CROSS-FILTERING) ---
             
             # 1. Pehle teeno filters ke liye data banao
             sku_data = filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
@@ -198,15 +239,13 @@ if uploaded_files:
             reason_list_for_dropdown = ["Select a Reason..."] + list(reason_data['Reason_with_Count'])
             platform_list_dropdown = ["Select a Platform..."] + list(platform_data['Platform_with_Count'])
             
-            # --- FIX: Session state ko check karo ---
-            # Agar session state ki value nayi list mein nahi hai, toh reset karo
+            # Session state ko check karo
             if 'sku_search' not in st.session_state or st.session_state.sku_search not in sku_list_for_dropdown:
                 st.session_state.sku_search = "Select an SKU..."
             if 'reason_search' not in st.session_state or st.session_state.reason_search not in reason_list_for_dropdown:
                 st.session_state.reason_search = "Select a Reason..."
             if 'platform_search' not in st.session_state or st.session_state.platform_search not in platform_list_dropdown:
                 st.session_state.platform_search = "Select a Platform..."
-            # --- END OF FIX ---
 
             # 3. Ab teeno filters ko TOP par dikhao
             st.subheader("Cross-Filters")
@@ -256,8 +295,6 @@ if uploaded_files:
                 platform_display_data = final_filtered_df.groupby('Platform')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
                 platform_display_data.columns = ['Platform', 'Total Quantity']
                 st.dataframe(platform_display_data, use_container_width=True, height=500)
-            
-            # --- END OF UPDATE ---
         
         else:
             # Yeh part same hai (jab sidebar se SKU select karte hain)
@@ -286,5 +323,4 @@ if uploaded_files:
     else:
         st.warning("No data found after processing. Please check your files.")
 else:
-    # Yeh message ab main page par dikhega jab tak file upload nahi hoti
     st.info("Please upload your return files from the sidebar to start the analysis.")
