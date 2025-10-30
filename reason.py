@@ -185,19 +185,25 @@ if uploaded_files:
                 all_skus_count = filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
                 all_skus_count.columns = ['SKU', 'Total Quantity']
                 
-                # --- UPDATE: Dropdown mein count add kiya hai ---
+                # Dropdown ke liye count add karo
                 all_skus_count['SKU_with_Count'] = all_skus_count['SKU'] + " (" + all_skus_count['Total Quantity'].astype(str) + ")"
                 
                 sku_list_for_dropdown = ["Select an SKU to filter..."] + list(all_skus_count['SKU_with_Count'])
                 sku_search = st.selectbox("Search/Select SKU:", options=sku_list_for_dropdown, key="sku_search")
                 
+                # --- UPDATE: Sirf 'SKU' column dikhao ---
+                # Pehle display ke liye table bana lo
+                df_to_display_sku = all_skus_count[['SKU']]
+
                 if sku_search != "Select an SKU to filter...":
-                    # Selection ke basis pe filter karo
-                    filtered_sku_df = all_skus_count[all_skus_count['SKU_with_Count'] == sku_search]
+                    # Selection se original SKU naam nikalo
+                    selected_sku_name = all_skus_count[all_skus_count['SKU_with_Count'] == sku_search]['SKU'].values[0]
+                    # Ab display table ko filter karo
+                    filtered_sku_df = df_to_display_sku[df_to_display_sku['SKU'] == selected_sku_name]
                     st.dataframe(filtered_sku_df, use_container_width=True, height=500)
                 else:
-                    # Agar kuch select nahi kiya toh poori list dikhao
-                    st.dataframe(all_skus_count, use_container_width=True, height=500)
+                    # Poori table dikhao (sirf SKU column ke saath)
+                    st.dataframe(df_to_display_sku, use_container_width=True, height=500)
                 # --- END OF UPDATE ---
 
             with col2:
@@ -205,19 +211,25 @@ if uploaded_files:
                 all_reasons_count = filtered_df.groupby('Final_Reason')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
                 all_reasons_count.columns = ['Reason', 'Total Quantity']
                 
-                # --- UPDATE: Dropdown mein count add kiya hai ---
+                # Dropdown ke liye count add karo
                 all_reasons_count['Reason_with_Count'] = all_reasons_count['Reason'] + " (" + all_reasons_count['Total Quantity'].astype(str) + ")"
                 
                 reason_list_for_dropdown = ["Select a Reason to filter..."] + list(all_reasons_count['Reason_with_Count'])
                 reason_search = st.selectbox("Search/Select Reason:", options=reason_list_for_dropdown, key="reason_search")
                 
+                # --- UPDATE: Sirf 'Reason' column dikhao ---
+                # Pehle display ke liye table bana lo
+                df_to_display_reason = all_reasons_count[['Reason']]
+                
                 if reason_search != "Select a Reason to filter...":
-                    # Selection ke basis pe filter karo
-                    filtered_reason_df = all_reasons_count[all_reasons_count['Reason_with_Count'] == reason_search]
+                    # Selection se original Reason naam nikalo
+                    selected_reason_name = all_reasons_count[all_reasons_count['Reason_with_Count'] == reason_search]['Reason'].values[0]
+                    # Ab display table ko filter karo
+                    filtered_reason_df = df_to_display_reason[df_to_display_reason['Reason'] == selected_reason_name]
                     st.dataframe(filtered_reason_df, use_container_width=True, height=500)
                 else:
-                    # Agar kuch select nahi kiya toh poori list dikhao
-                    st.dataframe(all_reasons_count, use_container_width=True, height=500)
+                    # Poori table dikhao (sirf Reason column ke saath)
+                    st.dataframe(df_to_display_reason, use_container_width=True, height=500)
                 # --- END OF UPDATE ---
             
             st.subheader("Returns by Platform (by total quantity)")
