@@ -30,13 +30,11 @@ COLUMN_MAPPING = {
         'reason_col': 'Subreason',
         'qty_col': 'Quantity'
     },
-    # --- NAYA PORTAL ADD KIYA HAI ---
     'amazon_flex': {
-        'sku_col': 'Item SkuCode',
+        'sku_col': 'Item SkuCode', # Mapping abhi bhi clean naam pe hai
         'reason_col': 'Return Reason',
         'qty_col': 'Total Received Items'
     }
-    # ---------------------------------
 }
 
 # Mapping for display names
@@ -46,7 +44,7 @@ DISPLAY_NAME_MAPPING = {
     'ajio': 'Ajio',
     'meesho': 'Meesho',
     'firstcry': 'Firstcry',
-    'amazon_flex': 'Amazon Flex' # <-- Display naam add kiya
+    'amazon_flex': 'Amazon Flex'
 }
 
 # --- Helper Function: Get platform from filename (UPDATED) ---
@@ -67,7 +65,7 @@ def get_platform_from_name(filename_lower):
     return None
 # --- END OF UPDATE ---
 
-# --- Helper Function: Extract data from a file object (Same as before) ---
+# --- Helper Function: Extract data from a file object (FIXED) ---
 def extract_data(file_object, platform, filename_for_error_msg):
     df = None
     try:
@@ -79,7 +77,10 @@ def extract_data(file_object, platform, filename_for_error_msg):
         else:
             df = pd.read_csv(file_object)
         
-        df.columns = df.columns.str.strip()
+        # --- YEH HAI FIX ---
+        # Column names ko force karke clean karo (string banao, fir space hatao)
+        df.columns = [str(col).strip() for col in df.columns]
+        # --- END OF FIX ---
         
         qty_col_name = mapping.get('qty_col') 
         
