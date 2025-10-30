@@ -178,64 +178,68 @@ if uploaded_files:
             st.header("Overall Return Analysis")
             st.info("Select an SKU from the sidebar to see a detailed breakdown.")
             
-            col1, col2 = st.columns(2)
+            # --- UPDATE: Changed to 3 columns ---
+            col1, col2, col3 = st.columns(3)
+            # -----------------------------------
             
             with col1:
                 st.subheader("All Returned SKUs (by total quantity)")
                 all_skus_count = filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
                 all_skus_count.columns = ['SKU', 'Total Quantity']
                 
-                # Add count to dropdown
                 all_skus_count['SKU_with_Count'] = all_skus_count['SKU'] + " (" + all_skus_count['Total Quantity'].astype(str) + ")"
                 
                 sku_list_for_dropdown = ["Select an SKU to filter..."] + list(all_skus_count['SKU_with_Count'])
                 sku_search = st.selectbox("Search/Select SKU:", options=sku_list_for_dropdown, key="sku_search")
                 
-                # --- UPDATE: Show 'SKU' and 'Total Quantity' ---
-                # Create the table to display
-                df_to_display_sku = all_skus_count[['SKU', 'Total Quantity']] # <-- RE-ADDED 'Total Quantity'
+                df_to_display_sku = all_skus_count[['SKU', 'Total Quantity']] 
 
                 if sku_search != "Select an SKU to filter...":
-                    # Get the original SKU name from the selection
                     selected_sku_name = all_skus_count[all_skus_count['SKU_with_Count'] == sku_search]['SKU'].values[0]
-                    # Filter the display table
                     filtered_sku_df = df_to_display_sku[df_to_display_sku['SKU'] == selected_sku_name]
                     st.dataframe(filtered_sku_df, use_container_width=True, height=500)
                 else:
-                    # Show the full table
                     st.dataframe(df_to_display_sku, use_container_width=True, height=500)
-                # --- END OF UPDATE ---
 
             with col2:
                 st.subheader("All Return Reasons (by total quantity)")
                 all_reasons_count = filtered_df.groupby('Final_Reason')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
                 all_reasons_count.columns = ['Reason', 'Total Quantity']
                 
-                # Add count to dropdown
                 all_reasons_count['Reason_with_Count'] = all_reasons_count['Reason'] + " (" + all_reasons_count['Total Quantity'].astype(str) + ")"
                 
                 reason_list_for_dropdown = ["Select a Reason to filter..."] + list(all_reasons_count['Reason_with_Count'])
                 reason_search = st.selectbox("Search/Select Reason:", options=reason_list_for_dropdown, key="reason_search")
                 
-                # --- UPDATE: Show 'Reason' and 'Total Quantity' ---
-                # Create the table to display
-                df_to_display_reason = all_reasons_count[['Reason', 'Total Quantity']] # <-- RE-ADDED 'Total Quantity'
+                df_to_display_reason = all_reasons_count[['Reason', 'Total Quantity']]
                 
                 if reason_search != "Select a Reason to filter...":
-                    # Get the original Reason name from the selection
                     selected_reason_name = all_reasons_count[all_reasons_count['Reason_with_Count'] == reason_search]['Reason'].values[0]
-                    # Filter the display table
                     filtered_reason_df = df_to_display_reason[df_to_display_reason['Reason'] == selected_reason_name]
                     st.dataframe(filtered_reason_df, use_container_width=True, height=500)
                 else:
-                    # Show the full table
                     st.dataframe(df_to_display_reason, use_container_width=True, height=500)
-                # --- END OF UPDATE ---
-            
-            st.subheader("Returns by Platform (by total quantity)")
-            platform_counts = filtered_df.groupby('Platform')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
-            platform_counts.columns = ['Platform', 'Total Quantity']
-            st.dataframe(platform_counts, use_container_width=True)
+
+            # --- NEW: Platform column added ---
+            with col3:
+                st.subheader("Returns by Platform (by total quantity)")
+                platform_counts = filtered_df.groupby('Platform')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
+                platform_counts.columns = ['Platform', 'Total Quantity']
+                
+                platform_counts['Platform_with_Count'] = platform_counts['Platform'] + " (" + platform_counts['Total Quantity'].astype(str) + ")"
+                
+                platform_list_dropdown = ["Select a Platform to filter..."] + list(platform_counts['Platform_with_Count'])
+                platform_search = st.selectbox("Search/Select Platform:", options=platform_list_dropdown, key="platform_search")
+                
+                df_to_display_platform = platform_counts[['Platform', 'Total Quantity']]
+                
+                if platform_search != "Select a Platform to filter...":
+                    selected_platform_name = platform_counts[platform_counts['Platform_with_Count'] == platform_search]['Platform'].values[0]
+                    filtered_platform_df = df_to_display_platform[df_to_display_platform['Platform'] == selected_platform_name]
+                    st.dataframe(filtered_platform_df, use_container_width=True, height=500)
+                else:
+                    st.dataframe(df_to_display_platform, use_container_width=True, height=500)
+            # --- END OF NEW COLUMN ---
         
         else:
             st.header(f"Deep-Dive for SKU: {selected_sku}")
