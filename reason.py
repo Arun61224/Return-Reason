@@ -7,17 +7,17 @@ COLUMN_MAPPING = {
     'flipkart': {
         'sku_col': 'SKU',
         'reason_col': 'Return Sub-reason',
-        'qty_col': 'Quantity'  
+        'qty_col': 'Quantity'
     },
     'ajio': {
         'sku_col': 'SELLER SKU',
         'reason_col': 'Cust Return Reason',
-        'qty_col': 'Return QTY' 
+        'qty_col': 'Return QTY'
     },
     'amazon': {
         'sku_col': 'sku',
         'reason_col': 'reason',
-        'qty_col': 'quantity' 
+        'qty_col': 'quantity'
     },
     'meesho': {
         'sku_col': 'SKU',
@@ -26,7 +26,7 @@ COLUMN_MAPPING = {
     'firstcry': {
         'sku_col': 'VendorStyleCode',
         'reason_col': 'Subreason',
-        'qty_col': 'Quantity' 
+        'qty_col': 'Quantity'
     }
 }
 
@@ -44,8 +44,9 @@ def process_files(uploaded_files):
     all_data_list = []
     
     for uploaded_file in uploaded_files:
-        filename = "" 
+        filename = "" # Initialize empty filename
         
+        # --- ERROR FIX ---
         try:
             file_name_attr = uploaded_file.name
             if isinstance(file_name_attr, list):
@@ -55,9 +56,11 @@ def process_files(uploaded_files):
         except Exception as e:
             st.error(f"Error getting file name: {e}")
             continue 
+        # --- END FIX ---
             
         platform = None
         
+        # Identify platform from filename
         if 'amazon' in filename:
             platform = 'amazon'
         elif 'flipkart' in filename:
@@ -96,7 +99,7 @@ def process_files(uploaded_files):
                     temp_df = df[cols_to_use].copy()
                     temp_df.rename(columns={
                         mapping['sku_col']: 'Final_SKU',
-                        mapping['reason_col': 'Final_Reason'
+                        mapping['reason_col']: 'Final_Reason'
                     }, inplace=True)
                     temp_df['Final_Qty'] = 1 
 
@@ -157,44 +160,20 @@ if uploaded_files:
             default=all_platforms
         )
         
-        # --- LOGIC UPDATE: YAHAN PEHLE PLATFORM SE FILTER KIYA ---
-        # Taaki SKU list selected platforms ke hisaab se update ho
+        all_skus = sorted(master_df['Final_SKU'].unique())
+        selected_sku = st.sidebar.selectbox(
+            "Select SKU for Deep-Dive",
+            options=all_skus,
+            index=None,
+            placeholder="Type or select an SKU..."
+        )
+
         filtered_df = master_df[
             (master_df['Platform'].isin(selected_platforms))
         ]
         
-        # --- NEW: SKU DROPDOWN WITH QUANTITY ---
-        
-        # 1. Pehle SKU aur unki Qty calculate karo
-        sku_qty_df = filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
-        sku_qty_df.columns = ['SKU', 'Total Quantity']
-        
-        # 2. Dropdown ke liye formatted list banao (e.g., "SKU-XYZ (150)")
-        sku_options_list = sku_qty_df.apply(
-            lambda row: f"{row['SKU']} ({row['Total Quantity']})", 
-            axis=1
-        ).tolist()
-
-        # 3. Placeholder (sabse upar) add karo
-        all_sku_options = ["Type or select an SKU..."] + sku_options_list
-        
-        # 4. Selectbox banao
-        selected_sku_formatted = st.sidebar.selectbox(
-            "Select SKU for Deep-Dive",
-            options=all_sku_options,
-            index=0 # Default mein placeholder select rakho
-        )
-        
-        # 5. Formatted string se original SKU naam nikalo
-        selected_sku = None # Default
-        if selected_sku_formatted != "Type or select an SKU...":
-            selected_sku = selected_sku_formatted.split(" (")[0]
-        # --- END OF NEW SKU DROPDOWN LOGIC ---
-        
-
         # --- Dashboard UI (Using Qty Sums) ---
         
-        # Ab yahan 'if not selected_sku' check karo
         if not selected_sku:
             st.header("Overall Return Analysis")
             st.info("Select an SKU from the sidebar to see a detailed breakdown.")
@@ -203,5 +182,67 @@ if uploaded_files:
             
             with col1:
                 st.subheader("All Returned SKUs (by total quantity)")
-                # Humne sku_qty_df pehle hi bana liya hai, bas display karna hai
-                all_skus_count
+                all_skus_count = filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
+                all_skus_count.columns = ['SKU', 'Total Quantity']
+                
+                sku_search = st.text_input("Search SKU:", key="sku_search")
+                
+                # --- THIS IS THE FIX ---
+                if sku_search:
+                    # Use .apply() for a more robust search
+                    search_term_lower = sku_search.lower()
+                    filtered_sku_df = all_skus_count[all_skus_count['SKU'].apply(lambda x: search_term_lower in str(x).lower())]
+                    st.dataframe(filtered_sku_df, use_container_width=True, height=500)
+                else:
+                    st.dataframe(all_skus_count, use_container_width=True, height=500)
+                # --- END OF FIX ---
+
+            with col2:
+                st.subheader("All Return Reasons (by total quantity)")
+                all_reasons_count = filtered_df.groupby('Final_Reason')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
+                all_reasons_count.columns = ['Reason', 'Total Quantity']
+                
+                reason_search = st.text_input("Search Reason:", key="reason_search")
+                
+                # --- THIS IS THE FIX ---
+                if reason_search:
+                    # Use .apply() for a more robust search
+                    search_term_lower = reason_search.lower()
+                    filtered_reason_df = all_reasons_count[all_reasons_count['Reason'].apply(lambda x: search_term_lower in str(x).lower())]
+                    st.dataframe(filtered_reason_df, use_container_width=True, height=500)
+                else:
+                    st.dataframe(all_reasons_count, use_container_width=True, height=500)
+                # --- END OF FIX ---
+            
+            st.subheader("Returns by Platform (by total quantity)")
+            platform_counts = filtered_df.groupby('Platform')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
+            platform_counts.columns = ['Platform', 'Total Quantity']
+            st.dataframe(platform_counts, use_container_width=True)
+        
+        else:
+            st.header(f"Deep-Dive for SKU: {selected_sku}")
+            
+            sku_specific_df = filtered_df[filtered_df['Final_SKU'] == selected_sku]
+            
+            total_returns = sku_specific_df['Final_Qty'].sum()
+            st.metric("Total Returned Qty for this SKU", total_returns)
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("Return Reasons")
+                reason_counts = sku_specific_df.groupby('Final_Reason')['Final_Qty'].sum().sort_values(ascending=False)
+                st.bar_chart(reason_counts) 
+            
+            with col2:
+                st.subheader("Returns by Platform")
+                platform_counts = sku_specific_df.groupby('Platform')['Final_Qty'].sum().sort_values(ascending=False)
+                st.bar_chart(platform_counts)
+                
+            st.subheader("Raw Return Data for this SKU")
+            st.dataframe(sku_specific_df[['Final_SKU', 'Final_Reason', 'Platform', 'Final_Qty']])
+
+    else:
+        st.warning("No data found after processing. Please check your files.")
+else:
+    st.info("Please upload your return files to start the analysis.")
