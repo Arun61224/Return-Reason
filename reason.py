@@ -11,6 +11,7 @@ COLUMN_MAPPING = {
         'sku_col': 'SELLER SKU',
         'reason_col': 'Cust Return Reason'
     },
+    # The internal key is still 'amazon' for file detection
     'amazon': {
         'sku_col': 'sku',
         'reason_col': 'reason'
@@ -19,13 +20,22 @@ COLUMN_MAPPING = {
         'sku_col': 'SKU',
         'reason_col': 'Detailed Return Reason'
     },
-    # --- NEW PORTAL ADDED ---
     'firstcry': {
         'sku_col': 'VendorStyleCode',
         'reason_col': 'Subreason'
     }
-    # -------------------------
 }
+
+# --- NEW: Mapping for display names ---
+# We use this to set the label in the dashboard
+DISPLAY_NAME_MAPPING = {
+    'amazon': 'Amazon Warehouse',
+    'flipkart': 'Flipkart',
+    'ajio': 'Ajio',
+    'meesho': 'Meesho',
+    'firstcry': 'Firstcry'
+}
+# --------------------------------------
 
 # 2. File processing function
 def process_files(uploaded_files):
@@ -36,7 +46,6 @@ def process_files(uploaded_files):
         platform = None
         
         # Identify platform from filename
-        # --- NEW PLATFORM ADDED ---
         if 'amazon' in filename:
             platform = 'amazon'
         elif 'flipkart' in filename:
@@ -45,9 +54,8 @@ def process_files(uploaded_files):
             platform = 'meesho'
         elif 'ajio' in filename:
             platform = 'ajio'
-        elif 'firstcry' in filename: # <-- THIS LINE IS ADDED
+        elif 'firstcry' in filename:
             platform = 'firstcry'
-        # ---------------------------
         
         if platform:
             df = None # Initialize df here
@@ -72,8 +80,11 @@ def process_files(uploaded_files):
                     mapping['reason_col']: 'Final_Reason'
                 }, inplace=True)
                 
-                # Add platform name
-                temp_df['Platform'] = platform.capitalize()
+                # --- UPDATED: Use display name mapping ---
+                display_name = DISPLAY_NAME_MAPPING.get(platform, platform.capitalize())
+                temp_df['Platform'] = display_name
+                # ------------------------------------------
+                
                 all_data_list.append(temp_df)
 
             # --- To display errors better ---
@@ -91,12 +102,8 @@ def process_files(uploaded_files):
 
     # Combine all data into one final DataFrame
     master_df = pd.concat(all_data_list, ignore_index=True)
-    # Drop unnecessary rows (where SKU or Reason is null)
     master_df.dropna(subset=['Final_SKU', 'Final_Reason'], inplace=True)
-    
-    # Keep SKU as text (string) format
     master_df['Final_SKU'] = master_df['Final_SKU'].astype(str)
-    # Keep Reason as text (string) format as well
     master_df['Final_Reason'] = master_df['Final_Reason'].astype(str)
     
     return master_df
@@ -107,11 +114,13 @@ st.title("🛍️ Online Seller Return Analysis Dashboard")
 
 # 3. File Uploader
 st.header("Step 1: Upload Files")
+# --- UPDATED: File uploader text ---
 uploaded_files = st.file_uploader(
-    "Upload all your return reports (Amazon, Flipkart, Ajio, Meesho, Firstcry)",
+    "Upload all your return reports (Amazon Warehouse, Flipkart, Ajio, Meesho, Firstcry)",
     accept_multiple_files=True,
     type=['xlsx', 'csv']
 )
+# ------------------------------------
 
 # 4. When files are uploaded, show the dashboard
 if uploaded_files:
