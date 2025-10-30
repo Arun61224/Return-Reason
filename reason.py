@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -30,11 +31,13 @@ COLUMN_MAPPING = {
         'reason_col': 'Subreason',
         'qty_col': 'Quantity'
     },
+    # --- NAYA PORTAL ADD KIYA HAI ---
     'amazon_flex': {
-        'sku_col': 'Item SkuCode', # Mapping abhi bhi clean naam pe hai
+        'sku_col': 'Item SkuCode',
         'reason_col': 'Return Reason',
         'qty_col': 'Total Received Items'
     }
+    # ---------------------------------
 }
 
 # Mapping for display names
@@ -44,7 +47,7 @@ DISPLAY_NAME_MAPPING = {
     'ajio': 'Ajio',
     'meesho': 'Meesho',
     'firstcry': 'Firstcry',
-    'amazon_flex': 'Amazon Flex'
+    'amazon_flex': 'Amazon Flex' # <-- Display naam add kiya
 }
 
 # --- Helper Function: Get platform from filename (UPDATED) ---
@@ -77,27 +80,40 @@ def extract_data(file_object, platform, filename_for_error_msg):
         else:
             df = pd.read_csv(file_object)
         
-        # --- YEH HAI FIX ---
-        # Column names ko force karke clean karo (string banao, fir space hatao)
+        # --- YEH HAI FIX (Extra space ke liye) ---
+        # Column names ko force karke clean karo
         df.columns = [str(col).strip() for col in df.columns]
         # --- END OF FIX ---
         
         qty_col_name = mapping.get('qty_col') 
         
         if qty_col_name:
-            cols_to_use = [mapping['sku_col'], mapping['reason_col'], qty_col_name]
+            # Clean SKU/Reason column names ko mapping se check karo
+            clean_mapping = {
+                'sku_col': mapping['sku_col'].strip(),
+                'reason_col': mapping['reason_col'].strip(),
+                'qty_col': mapping['qty_col'].strip()
+            }
+            
+            cols_to_use = [clean_mapping['sku_col'], clean_mapping['reason_col'], clean_mapping['qty_col']]
             temp_df = df[cols_to_use].copy()
             temp_df.rename(columns={
-                mapping['sku_col']: 'Final_SKU',
-                mapping['reason_col']: 'Final_Reason',
-                qty_col_name: 'Final_Qty'
+                clean_mapping['sku_col']: 'Final_SKU',
+                clean_mapping['reason_col']: 'Final_Reason',
+                clean_mapping['qty_col']: 'Final_Qty'
             }, inplace=True)
         else:
-            cols_to_use = [mapping['sku_col'], mapping['reason_col']]
+            # Clean SKU/Reason column names ko mapping se check karo
+            clean_mapping = {
+                'sku_col': mapping['sku_col'].strip(),
+                'reason_col': mapping['reason_col'].strip()
+            }
+            
+            cols_to_use = [clean_mapping['sku_col'], clean_mapping['reason_col']]
             temp_df = df[cols_to_use].copy()
             temp_df.rename(columns={
-                mapping['sku_col']: 'Final_SKU',
-                mapping['reason_col']: 'Final_Reason'
+                clean_mapping['sku_col']: 'Final_SKU',
+                clean_mapping['reason_col']: 'Final_Reason'
             }, inplace=True)
             temp_df['Final_Qty'] = 1 
 
@@ -111,13 +127,13 @@ def extract_data(file_object, platform, filename_for_error_msg):
         return temp_df
 
     except KeyError as e:
-        st.error(f"Error processing {filename_for_error_msg}: Column {e} not found.")
+        st.error(f"Error processing {filename_for_error_msg}: Column '{e}' not found.")
         if df is not None:
             st.error(f"Columns found in file: {list(df.columns)}")
-        st.warning("Please correct 'COLUMN_MAPPING' in the code.")
+        st.warning("Please check 'COLUMN_MAPPING' in the code. Note: Column names are case-sensitive and space-sensitive.")
         return None
     except Exception as e:
-        st.error(f"Error processing {filename_for_error_msg}: {e}.")
+        st.error(f"General error processing {filename_for_error_msg}: {e}.")
         return None
 
 # 2. Main File processing function (Handles ZIP files)
