@@ -45,7 +45,23 @@ def process_files(uploaded_files):
     all_data_list = []
     
     for uploaded_file in uploaded_files:
-        filename = uploaded_file.name.lower()
+        filename = "" # Initialize empty filename
+        
+        # --- ERROR FIX ---
+        # This handles the "AttributeError: 'list' object has no attribute 'lower'"
+        try:
+            file_name_attr = uploaded_file.name
+            if isinstance(file_name_attr, list):
+                # If name is a list (strange error), take the first item
+                filename = file_name_attr[0].lower()
+            else:
+                # Normal case: name is a string
+                filename = file_name_attr.lower()
+        except Exception as e:
+            st.error(f"Error getting file name: {e}")
+            continue # Skip this file
+        # --- END FIX ---
+            
         platform = None
         
         # Identify platform from filename
@@ -197,7 +213,7 @@ if uploaded_files:
                 # Group by Reason and sum the Final_Qty
                 all_reasons_count = filtered_df.groupby('Final_Reason')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
                 all_reasons_count.columns = ['Reason', 'Total Quantity']
-                st.dataframe(all_reasons_count, use_container_width=True, height=5ReadMe.md)
+                st.dataframe(all_reasons_count, use_container_width=True, height=500)
             
             st.subheader("Returns by Platform (by total quantity)")
             # Group by Platform and sum the Final_Qty
