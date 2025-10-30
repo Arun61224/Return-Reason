@@ -1,29 +1,33 @@
-# CODE POORA ENGLISH MEIN HAI, jaisa aapne kaha tha
-
 import streamlit as st
 import pandas as pd
+import numpy as np # We need numpy for data handling
 
 # 1. Column name mapping provided by you
 COLUMN_MAPPING = {
     'flipkart': {
         'sku_col': 'SKU',
-        'reason_col': 'Return Sub-reason'
+        'reason_col': 'Return Sub-reason',
+        'qty_col': 'Quantity'  # <-- Qty column added
     },
     'ajio': {
         'sku_col': 'SELLER SKU',
-        'reason_col': 'Cust Return Reason'
+        'reason_col': 'Cust Return Reason',
+        'qty_col': 'Return QTY' # <-- Qty column added
     },
     'amazon': {
         'sku_col': 'sku',
-        'reason_col': 'reason'
+        'reason_col': 'reason',
+        'qty_col': 'quantity' # <-- Qty column added
     },
     'meesho': {
         'sku_col': 'SKU',
         'reason_col': 'Detailed Return Reason'
+        # No 'qty_col' for Meesho, as requested
     },
     'firstcry': {
         'sku_col': 'VendorStyleCode',
-        'reason_col': 'Subreason'
+        'reason_col': 'Subreason',
+        'qty_col': 'Quantity' # <-- Qty column added
     }
 }
 
@@ -68,14 +72,42 @@ def process_files(uploaded_files):
                 
                 df.columns = df.columns.str.strip()
                 
-                temp_df = df[[mapping['sku_col'], mapping['reason_col']]].copy()
-                temp_df.rename(columns={
-                    mapping['sku_col']: 'Final_SKU',
-                    mapping['reason_col']: 'Final_Reason'
-                }, inplace=True)
+                # --- NEW LOGIC FOR QUANTITY ---
+                qty_col_name = mapping.get('qty_col') # This will be None for Meesho
                 
+                if qty_col_name:
+                    # For platforms WITH a quantity column
+                    cols_to_use = [mapping['sku_col'], mapping['reason_col'], qty_col_name]
+                    temp_df = df[cols_to_use].copy()
+                    temp_df.rename(columns={
+                        mapping['sku_col']: 'Final_SKU',
+                        mapping['reason_col']: 'Final_Reason',
+                        qty_col_name: 'Final_Qty'
+                    }, inplace=True)
+                else:
+                    # For platforms WITHOUT a quantity column (Meesho)
+                    cols_to_use = [mapping['sku_col'], mapping['reason_col']]
+                    temp_df = df[cols_to_use].copy()
+                    temp_df.rename(columns={
+                        mapping['sku_col']: 'Final_SKU',
+                        mapping['reason_col']: 'Final_Reason'
+                    }, inplace=True)
+                    # Create Final_Qty column with 1
+                    temp_df['Final_Qty'] = 1 
+                # --- END OF NEW LOGIC ---
+
                 display_name = DISPLAY_NAME_MAPPING.get(platform, platform.capitalize())
                 temp_df['Platform'] = display_name
+                
+                # --- Data Cleaning for Qty ---
+                # Convert Qty to numeric, forcing errors (blanks/text) to NaN
+                temp_df['Final_Qty'] = pd.to_numeric(temp_df['Final_Qty'], errors='coerce')
+                
+                # Now drop any rows that have null SKU, null Reason, OR null Qty
+                temp_df.dropna(subset=['Final_SKU', 'Final_Reason', 'Final_Qty'], inplace=True)
+                
+                # Convert Qty to integer
+                temp_df['Final_Qty'] = temp_df['Final_Qty'].astype(int)
                 
                 all_data_list.append(temp_df)
 
@@ -88,10 +120,16 @@ def process_files(uploaded_files):
                 st.error(f"Error processing {filename}: {e}.")
                 
     if not all_data_list:
-        return pd.DataFrame(columns=['Final_SKU', 'Final_Reason', 'Platform'])
+        # Need to include Final_Qty in the empty dataframe
+        return pd.DataFrame(columns=['Final_SKU', 'Final_Reason', 'Platform', 'Final_Qty'])
 
     master_df = pd.concat(all_data_list, ignore_index=True)
-    master_df.dropna(subset=['Final_SKU', 'Final_Reason'], inplace=True)
+    
+    # --- THIS LINE HANDLES THE '0' QTY REQUEST ---
+    # Drop rows where Qty might be 0, as it's not a valid return
+    master_df = master_df[master_df['Final_Qty'] > 0]
+    # -----------------------------------------------
+    
     master_df['Final_SKU'] = master_df['Final_SKU'].astype(str)
     master_df['Final_Reason'] = master_df['Final_Reason'].astype(str)
     
@@ -114,7 +152,7 @@ if uploaded_files:
     master_df = process_files(uploaded_files)
     
     if not master_df.empty:
-        st.success(f"Successfully processed {len(uploaded_files)} files. Total {len(master_df)} returns found.")
+        st.success(f"Successfully processed {len(uploaded_files)} files. Total returned items: {master_df['Final_Qty'].sum()}")
         st.divider()
 
         # --- Sidebar Filters ---
@@ -139,7 +177,7 @@ if uploaded_files:
             (master_df['Platform'].isin(selected_platforms))
         ]
         
-        # --- Dashboard UI ---
+        # --- Dashboard UI (Using Qty Sums) ---
         
         if not selected_sku:
             st.header("Overall Return Analysis")
@@ -147,48 +185,50 @@ if uploaded_files:
             
             col1, col2 = st.columns(2)
             
-            # --- UPDATE: Changed from Top 10 Chart to Full Table ---
             with col1:
-                st.subheader("All Returned SKUs (by count)")
-                all_skus_count = filtered_df['Final_SKU'].value_counts().reset_index()
-                all_skus_count.columns = ['SKU', 'Count']
+                st.subheader("All Returned SKUs (by total quantity)")
+                # Group by SKU and sum the Final_Qty
+                all_skus_count = filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
+                all_skus_count.columns = ['SKU', 'Total Quantity']
                 st.dataframe(all_skus_count, use_container_width=True, height=500)
 
             with col2:
-                st.subheader("All Return Reasons (by count)")
-                all_reasons_count = filtered_df['Final_Reason'].value_counts().reset_index()
-                all_reasons_count.columns = ['Reason', 'Count']
-                st.dataframe(all_reasons_count, use_container_width=True, height=500)
-            # -----------------------------------------------------
+                st.subheader("All Return Reasons (by total quantity)")
+                # Group by Reason and sum the Final_Qty
+                all_reasons_count = filtered_df.groupby('Final_Reason')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
+                all_reasons_count.columns = ['Reason', 'Total Quantity']
+                st.dataframe(all_reasons_count, use_container_width=True, height=5ReadMe.md)
             
-            st.subheader("Returns by Platform")
-            platform_counts = filtered_df['Platform'].value_counts().reset_index()
-            platform_counts.columns = ['Platform', 'Count']
+            st.subheader("Returns by Platform (by total quantity)")
+            # Group by Platform and sum the Final_Qty
+            platform_counts = filtered_df.groupby('Platform')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
+            platform_counts.columns = ['Platform', 'Total Quantity']
             st.dataframe(platform_counts, use_container_width=True)
         
         else:
-            # Yeh section same hai, kyunki yahan data already filtered hai
             st.header(f"Deep-Dive for SKU: {selected_sku}")
             
             sku_specific_df = filtered_df[filtered_df['Final_SKU'] == selected_sku]
             
-            total_returns = sku_specific_df.shape[0]
-            st.metric("Total Returns for this SKU", total_returns)
+            total_returns = sku_specific_df['Final_Qty'].sum()
+            st.metric("Total Returned Qty for this SKU", total_returns)
             
             col1, col2 = st.columns(2)
             
             with col1:
                 st.subheader("Return Reasons")
-                reason_counts = sku_specific_df['Final_Reason'].value_counts()
-                st.bar_chart(reason_counts) # Chart yahan theek hai
+                # Group by Reason and sum the Final_Qty
+                reason_counts = sku_specific_df.groupby('Final_Reason')['Final_Qty'].sum().sort_values(ascending=False)
+                st.bar_chart(reason_counts) 
             
             with col2:
                 st.subheader("Returns by Platform")
-                platform_counts = sku_specific_df['Platform'].value_counts()
-                st.bar_chart(platform_counts) # Chart yahan theek hai
+                # Group by Platform and sum the Final_Qty
+                platform_counts = sku_specific_df.groupby('Platform')['Final_Qty'].sum().sort_values(ascending=False)
+                st.bar_chart(platform_counts)
                 
             st.subheader("Raw Return Data for this SKU")
-            st.dataframe(sku_specific_df)
+            st.dataframe(sku_specific_df[['Final_SKU', 'Final_Reason', 'Platform', 'Final_Qty']])
 
     else:
         st.warning("No data found after processing. Please check your files.")
