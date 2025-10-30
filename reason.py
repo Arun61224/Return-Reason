@@ -178,70 +178,77 @@ if uploaded_files:
             st.header("Overall Return Analysis")
             st.info("Select an SKU from the sidebar to see a detailed breakdown.")
             
-            # --- UPDATE: Changed to 3 columns ---
-            col1, col2, col3 = st.columns(3)
-            # -----------------------------------
+            # --- UPDATE: NAYA LOGIC (CROSS-FILTERING) ---
             
+            # 1. Pehle teeno filters ke liye data banao (original filtered_df se)
+            sku_data = filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
+            sku_data.columns = ['SKU', 'Total Quantity']
+            sku_data['SKU_with_Count'] = sku_data['SKU'] + " (" + sku_data['Total Quantity'].astype(str) + ")"
+            sku_list_for_dropdown = ["Select an SKU..."] + list(sku_data['SKU_with_Count'])
+            
+            reason_data = filtered_df.groupby('Final_Reason')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
+            reason_data.columns = ['Reason', 'Total Quantity']
+            reason_data['Reason_with_Count'] = reason_data['Reason'] + " (" + reason_data['Total Quantity'].astype(str) + ")"
+            reason_list_for_dropdown = ["Select a Reason..."] + list(reason_data['Reason_with_Count'])
+            
+            platform_data = filtered_df.groupby('Platform')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
+            platform_data.columns = ['Platform', 'Total Quantity']
+            platform_data['Platform_with_Count'] = platform_data['Platform'] + " (" + platform_data['Total Quantity'].astype(str) + ")"
+            platform_list_dropdown = ["Select a Platform..."] + list(platform_data['Platform_with_Count'])
+
+            # 2. Ab teeno filters ko TOP par dikhao
+            st.subheader("Cross-Filters")
+            col1, col2, col3 = st.columns(3)
             with col1:
-                st.subheader("All Returned SKUs (by total quantity)")
-                all_skus_count = filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
-                all_skus_count.columns = ['SKU', 'Total Quantity']
-                
-                all_skus_count['SKU_with_Count'] = all_skus_count['SKU'] + " (" + all_skus_count['Total Quantity'].astype(str) + ")"
-                
-                sku_list_for_dropdown = ["Select an SKU to filter..."] + list(all_skus_count['SKU_with_Count'])
                 sku_search = st.selectbox("Search/Select SKU:", options=sku_list_for_dropdown, key="sku_search")
-                
-                df_to_display_sku = all_skus_count[['SKU', 'Total Quantity']] 
-
-                if sku_search != "Select an SKU to filter...":
-                    selected_sku_name = all_skus_count[all_skus_count['SKU_with_Count'] == sku_search]['SKU'].values[0]
-                    filtered_sku_df = df_to_display_sku[df_to_display_sku['SKU'] == selected_sku_name]
-                    st.dataframe(filtered_sku_df, use_container_width=True, height=500)
-                else:
-                    st.dataframe(df_to_display_sku, use_container_width=True, height=500)
-
             with col2:
-                st.subheader("All Return Reasons (by total quantity)")
-                all_reasons_count = filtered_df.groupby('Final_Reason')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
-                all_reasons_count.columns = ['Reason', 'Total Quantity']
-                
-                all_reasons_count['Reason_with_Count'] = all_reasons_count['Reason'] + " (" + all_reasons_count['Total Quantity'].astype(str) + ")"
-                
-                reason_list_for_dropdown = ["Select a Reason to filter..."] + list(all_reasons_count['Reason_with_Count'])
                 reason_search = st.selectbox("Search/Select Reason:", options=reason_list_for_dropdown, key="reason_search")
-                
-                df_to_display_reason = all_reasons_count[['Reason', 'Total Quantity']]
-                
-                if reason_search != "Select a Reason to filter...":
-                    selected_reason_name = all_reasons_count[all_reasons_count['Reason_with_Count'] == reason_search]['Reason'].values[0]
-                    filtered_reason_df = df_to_display_reason[df_to_display_reason['Reason'] == selected_reason_name]
-                    st.dataframe(filtered_reason_df, use_container_width=True, height=500)
-                else:
-                    st.dataframe(df_to_display_reason, use_container_width=True, height=500)
-
-            # --- NEW: Platform column added ---
             with col3:
-                st.subheader("Returns by Platform (by total quantity)")
-                platform_counts = filtered_df.groupby('Platform')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
-                platform_counts.columns = ['Platform', 'Total Quantity']
-                
-                platform_counts['Platform_with_Count'] = platform_counts['Platform'] + " (" + platform_counts['Total Quantity'].astype(str) + ")"
-                
-                platform_list_dropdown = ["Select a Platform to filter..."] + list(platform_counts['Platform_with_Count'])
                 platform_search = st.selectbox("Search/Select Platform:", options=platform_list_dropdown, key="platform_search")
+
+            # 3. Ab ek FINAL filtered DataFrame banao
+            final_filtered_df = filtered_df.copy()
+            
+            if sku_search != "Select an SKU...":
+                selected_sku_name = sku_data[sku_data['SKU_with_Count'] == sku_search]['SKU'].values[0]
+                final_filtered_df = final_filtered_df[final_filtered_df['Final_SKU'] == selected_sku_name]
+            
+            if reason_search != "Select a Reason...":
+                selected_reason_name = reason_data[reason_data['Reason_with_Count'] == reason_search]['Reason'].values[0]
+                final_filtered_df = final_filtered_df[final_filtered_df['Final_Reason'] == selected_reason_name]
                 
-                df_to_display_platform = platform_counts[['Platform', 'Total Quantity']]
+            if platform_search != "Select a Platform...":
+                selected_platform_name = platform_data[platform_data['Platform_with_Count'] == platform_search]['Platform'].values[0]
+                final_filtered_df = final_filtered_df[final_filtered_df['Platform'] == selected_platform_name]
                 
-                if platform_search != "Select a Platform to filter...":
-                    selected_platform_name = platform_counts[platform_counts['Platform_with_Count'] == platform_search]['Platform'].values[0]
-                    filtered_platform_df = df_to_display_platform[df_to_display_platform['Platform'] == selected_platform_name]
-                    st.dataframe(filtered_platform_df, use_container_width=True, height=500)
-                else:
-                    st.dataframe(df_to_display_platform, use_container_width=True, height=500)
-            # --- END OF NEW COLUMN ---
+            st.divider()
+            st.subheader("Filtered Results")
+
+            # 4. Ab neeche teeno tables dikhao (is naye final_filtered_df ke basis par)
+            res1, res2, res3 = st.columns(3)
+            
+            with res1:
+                st.caption("Filtered SKUs")
+                sku_display_data = final_filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
+                sku_display_data.columns = ['SKU', 'Total Quantity']
+                st.dataframe(sku_display_data, use_container_width=True, height=500)
+                
+            with res2:
+                st.caption("Filtered Reasons")
+                reason_display_data = final_filtered_df.groupby('Final_Reason')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
+                reason_display_data.columns = ['Reason', 'Total Quantity']
+                st.dataframe(reason_display_data, use_container_width=True, height=500)
+                
+            with res3:
+                st.caption("Filtered Platforms")
+                platform_display_data = final_filtered_df.groupby('Platform')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
+                platform_display_data.columns = ['Platform', 'Total Quantity']
+                st.dataframe(platform_display_data, use_container_width=True, height=500)
+            
+            # --- END OF UPDATE ---
         
         else:
+            # Yeh part same hai (jab sidebar se SKU select karte hain)
             st.header(f"Deep-Dive for SKU: {selected_sku}")
             
             sku_specific_df = filtered_df[filtered_df['Final_SKU'] == selected_sku]
