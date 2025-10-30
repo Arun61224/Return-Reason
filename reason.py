@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -52,9 +51,9 @@ DISPLAY_NAME_MAPPING = {
 
 # --- Helper Function: Get platform from filename (UPDATED) ---
 def get_platform_from_name(filename_lower):
-    # 'amazon_flex' ko pehle check karna zaroori hai
-    if 'amazon_flex' in filename_lower:
-        return 'amazon_flex'
+    # 'amazon_flex' ya 'amazon flex' ko pehle check karna zaroori hai
+    if 'amazon_flex' in filename_lower or 'amazon flex' in filename_lower:
+        return 'amazon_flex'  # Hamesha internal key 'amazon_flex' hi return karo
     elif 'amazon' in filename_lower:
         return 'amazon'
     elif 'flipkart' in filename_lower:
@@ -78,7 +77,13 @@ def extract_data(file_object, platform, filename_for_error_msg):
         if filename_for_error_msg.lower().endswith('.xlsx'):
             df = pd.read_excel(file_object, engine='openpyxl')
         else:
-            df = pd.read_csv(file_object)
+            # CSV ke liye encoding issues ho sakti hain
+            try:
+                df = pd.read_csv(file_object)
+            except UnicodeDecodeError:
+                # Agar UTF-8 fail ho, toh 'latin1' ya 'iso-8859-1' try karo
+                file_object.seek(0) # File pointer reset karo
+                df = pd.read_csv(file_object, encoding='latin1')
         
         # --- YEH HAI FIX (Extra space ke liye) ---
         # Column names ko force karke clean karo
@@ -305,3 +310,4 @@ if uploaded_files:
 else:
     # Yeh default message hai
     st.info("Please upload your return files from the sidebar to start the analysis.")
+
