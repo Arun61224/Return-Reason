@@ -21,7 +21,7 @@ COLUMN_MAPPING = {
     }
 }
 
-# 2. File processing function (BINA @st.cache_data ke)
+# 2. File processing function
 def process_files(uploaded_files):
     all_data_list = []
     
@@ -29,7 +29,6 @@ def process_files(uploaded_files):
         filename = uploaded_file.name.lower()
         platform = None
         
-        # Filename se platform pehchaano
         if 'amazon' in filename:
             platform = 'amazon'
         elif 'flipkart' in filename:
@@ -45,11 +44,14 @@ def process_files(uploaded_files):
                 mapping = COLUMN_MAPPING[platform]
                 
                 # File ko read karo (Excel ya CSV)
-                # 'openpyxl' is required for .xlsx
                 if filename.endswith('.xlsx'):
                     df = pd.read_excel(uploaded_file, engine='openpyxl')
                 else:
                     df = pd.read_csv(uploaded_file)
+                
+                # --- NAYA CODE: Extra spaces hatane ke liye ---
+                df.columns = df.columns.str.strip()
+                # ----------------------------------------------
                 
                 # Sirf zaroori columns select karo aur rename karo
                 temp_df = df[[mapping['sku_col'], mapping['reason_col']]].copy()
@@ -58,32 +60,30 @@ def process_files(uploaded_files):
                     mapping['reason_col']: 'Final_Reason'
                 }, inplace=True)
                 
-                # Platform ka naam add karo
                 temp_df['Platform'] = platform.capitalize()
-                
                 all_data_list.append(temp_df)
-                
+
+            # --- NAYA CODE: Error ko behtar tareeke se dikhane ke liye ---
+            except KeyError as e:
+                st.error(f"Error processing {filename}: Column {e} nahi mila.")
+                st.error(f"File ke andar yeh columns mile hain: {list(df.columns)}")
+                st.warning("Please code mein 'COLUMN_MAPPING' ko upar di gayi list ke hisaab se theek karo.")
+            # -----------------------------------------------------------
             except Exception as e:
-                st.error(f"Error processing {filename}: {e}. Check column names.")
+                st.error(f"Error processing {filename}: {e}. Check other column names.")
                 
     if not all_data_list:
         return pd.DataFrame(columns=['Final_SKU', 'Final_Reason', 'Platform'])
 
     # Saare data ko ek final DataFrame mein combine karo
     master_df = pd.concat(all_data_list, ignore_index=True)
-    
-    # Faltu rows (jahan SKU ya Reason khaali ho) hata do
     master_df.dropna(subset=['Final_SKU', 'Final_Reason'], inplace=True)
-    
-    # SKU ko text (string) format mein rakho
     master_df['Final_SKU'] = master_df['Final_SKU'].astype(str)
-    # Reason ko bhi text format mein rakho
     master_df['Final_Reason'] = master_df['Final_Reason'].astype(str)
     
     return master_df
 
-# --- Streamlit App ka UI ---
-
+# --- Streamlit App ka UI (BAAKI SAB SAME) ---
 st.set_page_config(layout="wide")
 st.title("🛍️ Online Seller Return Analysis Dashboard")
 
@@ -106,7 +106,6 @@ if uploaded_files:
         # --- Sidebar Filters ---
         st.sidebar.header("Filters")
         
-        # Platform filter
         all_platforms = master_df['Platform'].unique()
         selected_platforms = st.sidebar.multiselect(
             "Select Platform(s)",
@@ -114,7 +113,6 @@ if uploaded_files:
             default=all_platforms
         )
         
-        # SKU filter (Aapka main requirement)
         all_skus = sorted(master_df['Final_SKU'].unique())
         selected_sku = st.sidebar.selectbox(
             "Select SKU for Deep-Dive",
@@ -123,14 +121,12 @@ if uploaded_files:
             placeholder="Type or select an SKU..."
         )
 
-        # Filtered DataFrame based on sidebar selections
         filtered_df = master_df[
             (master_df['Platform'].isin(selected_platforms))
         ]
         
         # --- Dashboard UI ---
         
-        # Agar koi specific SKU select NAHI kiya hai
         if not selected_sku:
             st.header("Overall Return Analysis")
             st.info("Select an SKU from the sidebar to see a detailed breakdown.")
@@ -151,11 +147,9 @@ if uploaded_files:
             platform_counts = filtered_df['Platform'].value_counts()
             st.bar_chart(platform_counts)
         
-        # Agar koi specific SKU SELECT kiya hai
         else:
             st.header(f"Deep-Dive for SKU: {selected_sku}")
             
-            # Sirf uss SKU ka data filter karo
             sku_specific_df = filtered_df[filtered_df['Final_SKU'] == selected_sku]
             
             total_returns = sku_specific_df.shape[0]
