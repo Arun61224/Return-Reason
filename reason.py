@@ -29,7 +29,14 @@ COLUMN_MAPPING = {
         'sku_col': 'VendorStyleCode',
         'reason_col': 'Subreason',
         'qty_col': 'Quantity'
+    },
+    # --- NAYA PORTAL ADD KIYA HAI ---
+    'amazon_flex': {
+        'sku_col': 'Item SkuCode',
+        'reason_col': 'Return Reason',
+        'qty_col': 'Total Received Items'
     }
+    # ---------------------------------
 }
 
 # Mapping for display names
@@ -38,12 +45,16 @@ DISPLAY_NAME_MAPPING = {
     'flipkart': 'Flipkart',
     'ajio': 'Ajio',
     'meesho': 'Meesho',
-    'firstcry': 'Firstcry'
+    'firstcry': 'Firstcry',
+    'amazon_flex': 'Amazon Flex' # <-- Display naam add kiya
 }
 
-# --- Helper Function: Get platform from filename ---
+# --- Helper Function: Get platform from filename (UPDATED) ---
 def get_platform_from_name(filename_lower):
-    if 'amazon' in filename_lower:
+    # 'amazon_flex' ko pehle check karna zaroori hai
+    if 'amazon_flex' in filename_lower:
+        return 'amazon_flex'
+    elif 'amazon' in filename_lower:
         return 'amazon'
     elif 'flipkart' in filename_lower:
         return 'flipkart'
@@ -54,8 +65,9 @@ def get_platform_from_name(filename_lower):
     elif 'firstcry' in filename_lower:
         return 'firstcry'
     return None
+# --- END OF UPDATE ---
 
-# --- Helper Function: Extract data from a file object ---
+# --- Helper Function: Extract data from a file object (Same as before) ---
 def extract_data(file_object, platform, filename_for_error_msg):
     df = None
     try:
@@ -188,13 +200,12 @@ if uploaded_files:
         st.success(f"Successfully processed {len(uploaded_files)} files/archives. Total returned items: {master_df['Final_Qty'].sum()}")
         st.divider()
 
-        # --- UPDATE: Sidebar filters hata diye ---
-        # Ab 'filtered_df' seedha 'master_df' hai
+        # Sidebar filters hata diye gaye hain
         filtered_df = master_df.copy()
         
         st.header("Overall Return Analysis")
         
-        # --- Cross-Filtering Logic (Pehle jaisa) ---
+        # --- Cross-Filtering Logic ---
         
         # 1. Pehle teeno filters ke liye data banao
         sku_data = filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
