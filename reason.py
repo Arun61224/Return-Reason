@@ -65,12 +65,10 @@ def get_platform_from_name(filename_lower):
 
 # --- Helper Function: Extract data from a file object (Returns Data) ---
 def extract_data(file_object, platform, filename_for_error_msg):
-    # ... [Same as before]
     df = None
     try:
         mapping = COLUMN_MAPPING[platform]
         
-        # Read the file (Excel or CSV)
         if filename_for_error_msg.lower().endswith('.xlsx'):
             df = pd.read_excel(file_object, engine='openpyxl')
         else:
@@ -132,7 +130,7 @@ def extract_data(file_object, platform, filename_for_error_msg):
 # 2. Main File processing function (Handles ZIP files for Returns Data)
 def process_returns_files(uploaded_files):
     all_data_list = []
-    # ... [Same as before, processes returns data only]
+    
     for uploaded_file in uploaded_files:
         filename = ""
         try:
@@ -190,10 +188,8 @@ def process_sales_data(sales_file):
                 sales_file.seek(0)
                 sales_df = pd.read_csv(sales_file, encoding='latin1')
 
-        # Clean column names
         sales_df.columns = [str(col).strip() for col in sales_df.columns]
         
-        # We assume the columns are 'MSKU' and 'Customer Shipments' based on the file content
         required_cols = ['MSKU', 'Customer Shipments']
         if not all(col in sales_df.columns for col in required_cols):
             st.error("Sales file must contain 'MSKU' and 'Customer Shipments' columns.")
@@ -202,7 +198,6 @@ def process_sales_data(sales_file):
         total_orders_df = sales_df.groupby('MSKU')['Customer Shipments'].sum().reset_index()
         total_orders_df.columns = ['Final_SKU', 'Total_Orders']
         
-        # Ensure correct data types
         total_orders_df['Final_SKU'] = total_orders_df['Final_SKU'].astype(str)
         total_orders_df['Total_Orders'] = pd.to_numeric(total_orders_df['Total_Orders'], errors='coerce').fillna(0).astype(int)
         
@@ -322,7 +317,7 @@ if uploaded_returns_files:
             sku_display_data = final_filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
             sku_display_data.columns = ['SKU', 'Total Quantity']
             
-            # --- NEW: Calculate and Display Return Percentage ---
+            # --- Return Percentage Calculation ---
             if total_orders_df is not None:
                 sku_display_data = pd.merge(
                     sku_display_data, 
@@ -332,7 +327,6 @@ if uploaded_returns_files:
                     how='left'
                 ).drop(columns=['Final_SKU'])
                 
-                # Calculate Return %
                 sku_display_data['Total_Orders'] = sku_display_data['Total_Orders'].fillna(0).astype(int)
                 sku_display_data['Return %'] = np.where(
                     sku_display_data['Total_Orders'] > 0,
@@ -340,24 +334,20 @@ if uploaded_returns_files:
                     0
                 )
                 
-                # Format for display
-                sku_display_data['Return %'] = sku_display_data['Return %'].round(2).astype(str) + '%'
+                # --- FORMATTING CHANGE APPLIED HERE ---
+                # Return % को दो डेसिमल स्थानों तक फॉर्मेट करना ('00.00%')
+                sku_display_data['Return %'] = sku_display_data['Return %'].apply(lambda x: f"{x:.2f}%")
+                # --- END FORMATTING CHANGE ---
+
                 sku_display_data = sku_display_data[['SKU', 'Total Quantity', 'Total_Orders', 'Return %']]
                 sku_display_data.rename(columns={'Total_Orders': 'Total Orders Sold'}, inplace=True)
-            # --- END NEW CALCULATION ---
+            # --- End Return Percentage Calculation ---
 
             st.dataframe(
                 sku_display_data, 
                 use_container_width=True, 
-                height=500,
-                # Highlight the Return % column visually if it exists
-                column_config={"Return %": st.column_config.ProgressColumn(
-                        "Return %",
-                        help="Return percentage based on Total Orders",
-                        format="%f%%",
-                        min_value=0,
-                        max_value=100,
-                    )} if 'Return %' in sku_display_data.columns else None
+                height=500
+                # st.column_config.ProgressColumn can't be used with string (formatted) percentages, so using standard dataframe here.
             )
             
         with res2:
@@ -379,7 +369,6 @@ if uploaded_returns_files:
         filter_down_col1, filter_down_col2, filter_down_col3, filter_down_col4 = st.columns(4)
         
         with filter_down_col1:
-            # sku_display_data CSV download updated to include new columns
             csv_data_sku = convert_df_to_csv(sku_display_data)
             st.download_button(
                 label="Download Filtered SKUs (CSV) ⬇️",
