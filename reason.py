@@ -37,7 +37,7 @@ COLUMN_MAPPING = {
     }
 }
 
-# Mapping for display names
+# Mapping for display names (Ensures consistency between Sales and Returns Data for filtering)
 DISPLAY_NAME_MAPPING = {
     'amazon': 'Amazon Warehouse',
     'flipkart': 'Flipkart',
@@ -125,7 +125,6 @@ def extract_data(file_object, platform, filename_for_error_msg):
     except Exception as e:
         st.error(f"General error processing {filename_for_error_msg}: {e}.")
         return None
-# --- End of extract_data ---
 
 # 2. Main File processing function (Handles ZIP files for Returns Data)
 def process_returns_files(uploaded_files):
@@ -172,7 +171,7 @@ def process_returns_files(uploaded_files):
     
     return master_df
 
-# --- NEW: Function to process Sales/Order Data ---
+# --- NEW: Function to process Sales/Order Data (Grouped by SKU AND Platform) ---
 def process_sales_data(sales_file):
     if not sales_file:
         return None
@@ -190,19 +189,31 @@ def process_sales_data(sales_file):
 
         sales_df.columns = [str(col).strip() for col in sales_df.columns]
         
-        required_cols = ['MSKU', 'Customer Shipments']
+        # We need MSKU, Customer Shipments, and Platform from the Sales File
+        required_cols = ['MSKU', 'Customer Shipments', 'Platform'] 
         if not all(col in sales_df.columns for col in required_cols):
-            st.error("Sales file must contain 'MSKU' and 'Customer Shipments' columns.")
+            st.error("Sales file must contain 'MSKU', 'Customer Shipments', and 'Platform' columns.")
             return None
 
-        total_orders_df = sales_df.groupby('MSKU')['Customer Shipments'].sum().reset_index()
-        total_orders_df.columns = ['Final_SKU', 'Total_Orders']
+        # Standardize Platform names in sales file to match the names used in returns data for merging
+        # This is a critical step for cross-platform filtering
+        sales_df['Platform'] = sales_df['Platform'].apply(lambda x: x.strip())
         
-        total_orders_df['Final_SKU'] = total_orders_df['Final_SKU'].astype(str)
-        total_orders_df['Total_Orders'] = pd.to_numeric(total_orders_df['Total_Orders'], errors='coerce').fillna(0).astype(int)
+        # Assuming the Platform names in the Sales file (e.g., 'Amazon Warehouse', 'Flipkart Warehouse') are used here.
+        # We'll rely on the user's Sales file platform names being consistent enough with the display names of the returns data
+        # For the Sales Oct.xlsx - Sheet1.csv, this is 'Amazon Warehouse' and 'Flipkart Warehouse'
+
+        # Group by SKU AND Platform
+        total_orders_platform_df = sales_df.groupby(['MSKU', 'Platform'])['Customer Shipments'].sum().reset_index()
+        total_orders_platform_df.columns = ['Final_SKU', 'Platform', 'Total_Orders']
         
-        st.sidebar.success(f"Sales Data Processed. Total Orders counted: {total_orders_df['Total_Orders'].sum()}")
-        return total_orders_df
+        total_orders_platform_df['Final_SKU'] = total_orders_platform_df['Final_SKU'].astype(str)
+        total_orders_platform_df['Total_Orders'] = pd.to_numeric(total_orders_platform_df['Total_Orders'], errors='coerce').fillna(0).astype(int)
+        
+        total_orders_sum = total_orders_platform_df['Total_Orders'].sum()
+        st.sidebar.success(f"Sales Data Processed. Total Orders counted: {total_orders_sum}")
+        
+        return total_orders_platform_df
 
     except Exception as e:
         st.sidebar.error(f"Error processing Sales Data: {e}")
@@ -237,7 +248,7 @@ uploaded_sales_file = st.sidebar.file_uploader(
 
 if uploaded_returns_files:
     master_df = process_returns_files(uploaded_returns_files)
-    total_orders_df = process_sales_data(uploaded_sales_file) # Process Sales data
+    total_orders_platform_df = process_sales_data(uploaded_sales_file) # Process Sales data grouped by SKU & Platform
     
     if not master_df.empty:
         st.success(f"Successfully processed {len(uploaded_returns_files)} returns files/archives. Total returned items: {master_df['Final_Qty'].sum()}")
@@ -317,15 +328,28 @@ if uploaded_returns_files:
             sku_display_data = final_filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
             sku_display_data.columns = ['SKU', 'Total Quantity']
             
-            # --- Return Percentage Calculation ---
-            if total_orders_df is not None:
+            # --- Return Percentage Calculation (Platform Filtered) ---
+            if total_orders_platform_df is not None:
+                
+                # Filter Order Data by selected platforms
+                orders_filtered_by_platform = total_orders_platform_df.copy()
+                if platform_search_list:
+                    selected_platform_names = [p.split(' (')[0] for p in platform_search_list]
+                    orders_filtered_by_platform = orders_filtered_by_platform[
+                        orders_filtered_by_platform['Platform'].isin(selected_platform_names)
+                    ]
+                
+                # Aggregate filtered orders by SKU for the merge
+                total_orders_for_merge = orders_filtered_by_platform.groupby('Final_SKU')['Total_Orders'].sum().reset_index()
+                total_orders_for_merge.columns = ['SKU', 'Total_Orders']
+                
+                # Merge with SKU returns data
                 sku_display_data = pd.merge(
                     sku_display_data, 
-                    total_orders_df, 
-                    left_on='SKU', 
-                    right_on='Final_SKU', 
+                    total_orders_for_merge, 
+                    on='SKU', 
                     how='left'
-                ).drop(columns=['Final_SKU'])
+                )
                 
                 sku_display_data['Total_Orders'] = sku_display_data['Total_Orders'].fillna(0).astype(int)
                 sku_display_data['Return %'] = np.where(
@@ -334,20 +358,17 @@ if uploaded_returns_files:
                     0
                 )
                 
-                # --- FORMATTING CHANGE APPLIED HERE ---
-                # Return % को दो डेसिमल स्थानों तक फॉर्मेट करना ('00.00%')
+                # Format to 00.00%
                 sku_display_data['Return %'] = sku_display_data['Return %'].apply(lambda x: f"{x:.2f}%")
-                # --- END FORMATTING CHANGE ---
 
                 sku_display_data = sku_display_data[['SKU', 'Total Quantity', 'Total_Orders', 'Return %']]
-                sku_display_data.rename(columns={'Total_Orders': 'Total Orders Sold'}, inplace=True)
+                sku_display_data.rename(columns={'Total_Orders': 'Total Orders Sold (Filtered)'}, inplace=True)
             # --- End Return Percentage Calculation ---
 
             st.dataframe(
                 sku_display_data, 
                 use_container_width=True, 
                 height=500
-                # st.column_config.ProgressColumn can't be used with string (formatted) percentages, so using standard dataframe here.
             )
             
         with res2:
