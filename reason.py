@@ -319,7 +319,17 @@ if uploaded_returns_files:
         res1, res2, res3 = st.columns(3)
         
         with res1:
+            # --- NEW SLIDER FOR RETURN PERCENTAGE RANGE ---
+            return_pct_range = st.slider(
+                "Return Percentage Range (%)",
+                min_value=0.0,
+                max_value=100.0,
+                value=(0.0, 100.0), # Default to show all
+                step=0.1,
+                key="return_pct_slider"
+            )
             st.caption("Filtered SKUs (Return vs. Orders)")
+            
             sku_display_data = final_filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
             sku_display_data.columns = ['SKU', 'Return Qty'] 
             
@@ -347,18 +357,27 @@ if uploaded_returns_files:
                 )
                 
                 sku_display_data['Total Orders'] = sku_display_data['Total Orders'].fillna(0).astype(int)
-                sku_display_data['Return %'] = np.where(
+                
+                # Calculate return percentage as a raw float for filtering
+                sku_display_data['Return_Pct_Raw'] = np.where(
                     sku_display_data['Total Orders'] > 0,
                     (sku_display_data['Return Qty'] / sku_display_data['Total Orders']) * 100,
-                    0
+                    0.0
                 )
                 
-                # Format to 00.00%
-                sku_display_data['Return %'] = sku_display_data['Return %'].apply(lambda x: f"{x:.2f}%")
-
-                # --- COLUMN REORDERING APPLIED HERE ---
+                # --- APPLYING THE NEW RETURN PERCENTAGE FILTER ---
+                min_pct, max_pct = return_pct_range
+                sku_display_data = sku_display_data[
+                    (sku_display_data['Return_Pct_Raw'] >= min_pct) & 
+                    (sku_display_data['Return_Pct_Raw'] <= max_pct)
+                ]
+                # --- END APPLYING FILTER ---
+                
+                # Format the percentage column for display (00.00%)
+                sku_display_data['Return %'] = sku_display_data['Return_Pct_Raw'].apply(lambda x: f"{x:.2f}%")
+                
+                # Final column selection and reordering
                 sku_display_data = sku_display_data[['SKU', 'Total Orders', 'Return Qty', 'Return %']]
-                # --- END COLUMN REORDERING ---
                 
                 # Display the data
                 st.dataframe(
@@ -377,6 +396,8 @@ if uploaded_returns_files:
             
         with res2:
             st.caption("Filtered Reasons")
+            # The Reason and Platform tables are filtered by the original SKU/Reason/Platform slicers, 
+            # but NOT by the Return % slider, as the slider applies only to the SKU summary result set.
             reason_display_data = final_filtered_df.groupby('Final_Reason')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
             reason_display_data.columns = ['Reason', 'Total Quantity']
             st.dataframe(reason_display_data, use_container_width=True, height=500)
@@ -390,10 +411,12 @@ if uploaded_returns_files:
         # --- Download Filtered Aggregated Results ---
         st.divider()
         st.subheader("Download Filtered Aggregated Results")
+        st.caption("Note: Downloaded SKUs will respect the Return Percentage Range filter.")
         
         filter_down_col1, filter_down_col2, filter_down_col3, filter_down_col4 = st.columns(4)
         
         with filter_down_col1:
+            # We convert the final displayed SKU data (which is already filtered)
             csv_data_sku = convert_df_to_csv(sku_display_data)
             st.download_button(
                 label="Download Filtered SKUs (CSV) ⬇️",
