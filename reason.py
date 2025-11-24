@@ -319,15 +319,37 @@ if uploaded_returns_files:
         res1, res2, res3 = st.columns(3)
         
         with res1:
-            # --- NEW SLIDER FOR RETURN PERCENTAGE RANGE ---
-            return_pct_range = st.slider(
-                "Return Percentage Range (%)",
-                min_value=0.0,
-                max_value=100.0,
-                value=(0.0, 100.0), # Default to show all
-                step=0.1,
-                key="return_pct_slider"
-            )
+            # --- NEW MANUAL INPUTS FOR RETURN PERCENTAGE RANGE ---
+            st.caption("Filter SKUs by Return % Range (0.00% to 100.00%)")
+            col_min, col_max = st.columns(2)
+            
+            with col_min:
+                min_pct = st.number_input(
+                    "Minimum Return %",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=0.0,
+                    step=0.01,
+                    format="%.2f",
+                    key="min_pct_input"
+                )
+            with col_max:
+                max_pct = st.number_input(
+                    "Maximum Return %",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=100.0,
+                    step=0.01,
+                    format="%.2f",
+                    key="max_pct_input"
+                )
+            
+            # Error handling for input
+            if min_pct > max_pct:
+                st.error("Minimum % value cannot be greater than Maximum % value.")
+                # Fallback to display full range if invalid input
+                min_pct, max_pct = 0.0, 100.0 
+                
             st.caption("Filtered SKUs (Return vs. Orders)")
             
             sku_display_data = final_filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
@@ -365,8 +387,7 @@ if uploaded_returns_files:
                     0.0
                 )
                 
-                # --- APPLYING THE NEW RETURN PERCENTAGE FILTER ---
-                min_pct, max_pct = return_pct_range
+                # --- APPLYING THE NEW MANUAL RETURN PERCENTAGE FILTER ---
                 sku_display_data = sku_display_data[
                     (sku_display_data['Return_Pct_Raw'] >= min_pct) & 
                     (sku_display_data['Return_Pct_Raw'] <= max_pct)
@@ -376,7 +397,7 @@ if uploaded_returns_files:
                 # Format the percentage column for display (00.00%)
                 sku_display_data['Return %'] = sku_display_data['Return_Pct_Raw'].apply(lambda x: f"{x:.2f}%")
                 
-                # Final column selection and reordering
+                # Final column selection and reordering (Total Orders first)
                 sku_display_data = sku_display_data[['SKU', 'Total Orders', 'Return Qty', 'Return %']]
                 
                 # Display the data
@@ -396,14 +417,14 @@ if uploaded_returns_files:
             
         with res2:
             st.caption("Filtered Reasons")
-            # The Reason and Platform tables are filtered by the original SKU/Reason/Platform slicers, 
-            # but NOT by the Return % slider, as the slider applies only to the SKU summary result set.
+            # This table respects SKU/Reason/Platform slicers but not the Return % filter
             reason_display_data = final_filtered_df.groupby('Final_Reason')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
             reason_display_data.columns = ['Reason', 'Total Quantity']
             st.dataframe(reason_display_data, use_container_width=True, height=500)
             
         with res3:
             st.caption("Filtered Platforms")
+            # This table respects SKU/Reason/Platform slicers but not the Return % filter
             platform_display_data = final_filtered_df.groupby('Platform')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
             platform_display_data.columns = ['Platform', 'Total Quantity']
             st.dataframe(platform_display_data, use_container_width=True, height=500)
@@ -416,7 +437,7 @@ if uploaded_returns_files:
         filter_down_col1, filter_down_col2, filter_down_col3, filter_down_col4 = st.columns(4)
         
         with filter_down_col1:
-            # We convert the final displayed SKU data (which is already filtered)
+            # We convert the final displayed SKU data (which is already filtered by the manual input)
             csv_data_sku = convert_df_to_csv(sku_display_data)
             st.download_button(
                 label="Download Filtered SKUs (CSV) ⬇️",
