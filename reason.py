@@ -1,10 +1,10 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import zipfile  # ZIP file processing
-import io         # Memory I/O
+import zipfile
+import io
 
-# 1. Column name mapping provided by you
+# 1. Column name mapping provided by you (Returns Data)
 COLUMN_MAPPING = {
     'flipkart': {
         'sku_col': 'SKU',
@@ -30,13 +30,11 @@ COLUMN_MAPPING = {
         'reason_col': 'Subreason',
         'qty_col': 'Quantity'
     },
-    # --- NAYA PORTAL ADD KIYA HAI ---
     'amazon_flex': {
         'sku_col': 'Item SkuCode',
         'reason_col': 'Return Reason',
         'qty_col': 'Total Received Items'
     }
-    # ---------------------------------
 }
 
 # Mapping for display names
@@ -51,7 +49,6 @@ DISPLAY_NAME_MAPPING = {
 
 # --- Helper Function: Get platform from filename ---
 def get_platform_from_name(filename_lower):
-    # 'amazon_flex' ya 'amazon flex' ko pehle check karna zaroori hai
     if 'amazon_flex' in filename_lower or 'amazon flex' in filename_lower:
         return 'amazon_flex'
     elif 'amazon' in filename_lower:
@@ -66,8 +63,9 @@ def get_platform_from_name(filename_lower):
         return 'firstcry'
     return None
 
-# --- Helper Function: Extract data from a file object ---
+# --- Helper Function: Extract data from a file object (Returns Data) ---
 def extract_data(file_object, platform, filename_for_error_msg):
+    # ... [Same as before]
     df = None
     try:
         mapping = COLUMN_MAPPING[platform]
@@ -129,45 +127,34 @@ def extract_data(file_object, platform, filename_for_error_msg):
     except Exception as e:
         st.error(f"General error processing {filename_for_error_msg}: {e}.")
         return None
+# --- End of extract_data ---
 
-# 2. Main File processing function (Handles ZIP files)
-def process_files(uploaded_files):
+# 2. Main File processing function (Handles ZIP files for Returns Data)
+def process_returns_files(uploaded_files):
     all_data_list = []
-    
+    # ... [Same as before, processes returns data only]
     for uploaded_file in uploaded_files:
         filename = ""
         try:
-            file_name_attr = uploaded_file.name
-            if isinstance(file_name_attr, list):
-                filename = file_name_attr[0].lower()
-            else:
-                filename = file_name_attr.lower()
-        except Exception as e:
-            st.error(f"Error getting file name: {e}")
-            continue 
+            filename = uploaded_file.name.lower()
+        except Exception:
+            continue
         
-        # --- Check for ZIP file ---
         if filename.endswith('.zip'):
-            st.info(f"Processing ZIP file: {uploaded_file.name}")
             try:
                 with zipfile.ZipFile(io.BytesIO(uploaded_file.getvalue()), 'r') as zf:
                     for internal_filename in zf.namelist():
                         if internal_filename.startswith('__MACOSX') or not (internal_filename.lower().endswith('.csv') or internal_filename.lower().endswith('.xlsx')):
                             continue
-                        
                         platform = get_platform_from_name(internal_filename.lower())
-                        
                         if platform:
                             with zf.open(internal_filename) as f:
                                 temp_df = extract_data(f, platform, internal_filename)
                                 if temp_df is not None:
                                     all_data_list.append(temp_df)
-                        else:
-                            st.warning(f"Skipping file in ZIP (platform not recognized): {internal_filename}")
             except Exception as e:
                 st.error(f"Failed to process ZIP file {uploaded_file.name}: {e}")
         
-        # --- Logic for Single files ---
         elif filename.endswith('.csv') or filename.endswith('.xlsx'):
             platform = get_platform_from_name(filename)
             if platform:
@@ -187,6 +174,46 @@ def process_files(uploaded_files):
     
     return master_df
 
+# --- NEW: Function to process Sales/Order Data ---
+def process_sales_data(sales_file):
+    if not sales_file:
+        return None
+    
+    try:
+        filename = sales_file.name.lower()
+        if filename.endswith('.xlsx'):
+            sales_df = pd.read_excel(sales_file, engine='openpyxl')
+        else:
+            try:
+                sales_df = pd.read_csv(sales_file)
+            except UnicodeDecodeError:
+                sales_file.seek(0)
+                sales_df = pd.read_csv(sales_file, encoding='latin1')
+
+        # Clean column names
+        sales_df.columns = [str(col).strip() for col in sales_df.columns]
+        
+        # We assume the columns are 'MSKU' and 'Customer Shipments' based on the file content
+        required_cols = ['MSKU', 'Customer Shipments']
+        if not all(col in sales_df.columns for col in required_cols):
+            st.error("Sales file must contain 'MSKU' and 'Customer Shipments' columns.")
+            return None
+
+        total_orders_df = sales_df.groupby('MSKU')['Customer Shipments'].sum().reset_index()
+        total_orders_df.columns = ['Final_SKU', 'Total_Orders']
+        
+        # Ensure correct data types
+        total_orders_df['Final_SKU'] = total_orders_df['Final_SKU'].astype(str)
+        total_orders_df['Total_Orders'] = pd.to_numeric(total_orders_df['Total_Orders'], errors='coerce').fillna(0).astype(int)
+        
+        st.sidebar.success(f"Sales Data Processed. Total Orders counted: {total_orders_df['Total_Orders'].sum()}")
+        return total_orders_df
+
+    except Exception as e:
+        st.sidebar.error(f"Error processing Sales Data: {e}")
+        return None
+# --- END NEW FUNCTION ---
+
 # --- Helper function to convert DataFrame to CSV for download ---
 @st.cache_data
 def convert_df_to_csv(df):
@@ -196,23 +223,30 @@ def convert_df_to_csv(df):
 st.set_page_config(layout="wide")
 st.title("🛍️ Online Seller Return Analysis Dashboard")
 
-# 3. File Uploader (Only item in sidebar)
-st.sidebar.header("Step 1: Upload Files")
-uploaded_files = st.sidebar.file_uploader(
-    "Upload .csv, .xlsx, or a single .zip file",
+# 3. File Uploaders in sidebar
+st.sidebar.header("Step 1: Upload Returns Data")
+uploaded_returns_files = st.sidebar.file_uploader(
+    "Upload Returns files (.csv, .xlsx, or .zip)",
     accept_multiple_files=True,
-    type=['xlsx', 'csv', 'zip']
+    type=['xlsx', 'csv', 'zip'],
+    key='returns_uploader'
 )
 
-# 4. When files are uploaded, show the dashboard
-if uploaded_files:
-    master_df = process_files(uploaded_files)
+st.sidebar.header("Step 2: Upload Sales/Order Data")
+uploaded_sales_file = st.sidebar.file_uploader(
+    "Upload Single Sales/Order File (for Return %)",
+    type=['xlsx', 'csv'],
+    key='sales_uploader'
+)
+# --- End Uploaders ---
+
+if uploaded_returns_files:
+    master_df = process_returns_files(uploaded_returns_files)
+    total_orders_df = process_sales_data(uploaded_sales_file) # Process Sales data
     
     if not master_df.empty:
-        st.success(f"Successfully processed {len(uploaded_files)} files/archives. Total returned items: {master_df['Final_Qty'].sum()}")
+        st.success(f"Successfully processed {len(uploaded_returns_files)} returns files/archives. Total returned items: {master_df['Final_Qty'].sum()}")
         
-        st.divider()
-
         filtered_df = master_df.copy()
         
         st.header("Overall Return Analysis")
@@ -262,7 +296,7 @@ if uploaded_files:
                 key="platform_search"
             )
 
-        # 4. Ab ek FINAL filtered DataFrame banao (UPDATED LOGIC)
+        # 4. Ab ek FINAL filtered DataFrame banao
         final_filtered_df = filtered_df.copy()
 
         if sku_search_list:
@@ -280,14 +314,51 @@ if uploaded_files:
         st.divider()
         st.subheader(f"Filtered Summary Tables (Total Items: {final_filtered_df['Final_Qty'].sum()})")
 
-        # 5. Ab neeche teeno tables dikhao (NO CHARTS)
+        # 5. Ab neeche teeno tables dikhao
         res1, res2, res3 = st.columns(3)
         
         with res1:
             st.caption("Filtered SKUs")
             sku_display_data = final_filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
             sku_display_data.columns = ['SKU', 'Total Quantity']
-            st.dataframe(sku_display_data, use_container_width=True, height=500)
+            
+            # --- NEW: Calculate and Display Return Percentage ---
+            if total_orders_df is not None:
+                sku_display_data = pd.merge(
+                    sku_display_data, 
+                    total_orders_df, 
+                    left_on='SKU', 
+                    right_on='Final_SKU', 
+                    how='left'
+                ).drop(columns=['Final_SKU'])
+                
+                # Calculate Return %
+                sku_display_data['Total_Orders'] = sku_display_data['Total_Orders'].fillna(0).astype(int)
+                sku_display_data['Return %'] = np.where(
+                    sku_display_data['Total_Orders'] > 0,
+                    (sku_display_data['Total Quantity'] / sku_display_data['Total_Orders']) * 100,
+                    0
+                )
+                
+                # Format for display
+                sku_display_data['Return %'] = sku_display_data['Return %'].round(2).astype(str) + '%'
+                sku_display_data = sku_display_data[['SKU', 'Total Quantity', 'Total_Orders', 'Return %']]
+                sku_display_data.rename(columns={'Total_Orders': 'Total Orders Sold'}, inplace=True)
+            # --- END NEW CALCULATION ---
+
+            st.dataframe(
+                sku_display_data, 
+                use_container_width=True, 
+                height=500,
+                # Highlight the Return % column visually if it exists
+                column_config={"Return %": st.column_config.ProgressColumn(
+                        "Return %",
+                        help="Return percentage based on Total Orders",
+                        format="%f%%",
+                        min_value=0,
+                        max_value=100,
+                    )} if 'Return %' in sku_display_data.columns else None
+            )
             
         with res2:
             st.caption("Filtered Reasons")
@@ -308,11 +379,12 @@ if uploaded_files:
         filter_down_col1, filter_down_col2, filter_down_col3, filter_down_col4 = st.columns(4)
         
         with filter_down_col1:
+            # sku_display_data CSV download updated to include new columns
             csv_data_sku = convert_df_to_csv(sku_display_data)
             st.download_button(
                 label="Download Filtered SKUs (CSV) ⬇️",
                 data=csv_data_sku,
-                file_name='filtered_sku_summary.csv',
+                file_name='filtered_sku_summary_with_return_rate.csv',
                 mime='text/csv',
                 help="Downloads the visible Filtered SKUs table."
             )
@@ -341,4 +413,4 @@ if uploaded_files:
     else:
         st.warning("No data found after processing. Please check your files or column names.")
 else:
-    st.info("Please upload your return files from the sidebar to start the analysis.")
+    st.info("Please upload your **Returns Data** and **Sales Data** from the sidebar to start the analysis.")
