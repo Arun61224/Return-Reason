@@ -37,7 +37,7 @@ COLUMN_MAPPING = {
     }
 }
 
-# Mapping for display names (Ensures consistency between Sales and Returns Data for filtering)
+# Mapping for display names
 DISPLAY_NAME_MAPPING = {
     'amazon': 'Amazon Warehouse',
     'flipkart': 'Flipkart',
@@ -195,14 +195,8 @@ def process_sales_data(sales_file):
             st.error("Sales file must contain 'MSKU', 'Customer Shipments', and 'Platform' columns.")
             return None
 
-        # Standardize Platform names in sales file to match the names used in returns data for merging
-        # This is a critical step for cross-platform filtering
         sales_df['Platform'] = sales_df['Platform'].apply(lambda x: x.strip())
         
-        # Assuming the Platform names in the Sales file (e.g., 'Amazon Warehouse', 'Flipkart Warehouse') are used here.
-        # We'll rely on the user's Sales file platform names being consistent enough with the display names of the returns data
-        # For the Sales Oct.xlsx - Sheet1.csv, this is 'Amazon Warehouse' and 'Flipkart Warehouse'
-
         # Group by SKU AND Platform
         total_orders_platform_df = sales_df.groupby(['MSKU', 'Platform'])['Customer Shipments'].sum().reset_index()
         total_orders_platform_df.columns = ['Final_SKU', 'Platform', 'Total_Orders']
@@ -239,6 +233,7 @@ uploaded_returns_files = st.sidebar.file_uploader(
 )
 
 st.sidebar.header("Step 2: Upload Sales/Order Data")
+st.sidebar.caption("Must contain 'MSKU', 'Customer Shipments', and 'Platform' columns.")
 uploaded_sales_file = st.sidebar.file_uploader(
     "Upload Single Sales/Order File (for Return %)",
     type=['xlsx', 'csv'],
@@ -324,9 +319,9 @@ if uploaded_returns_files:
         res1, res2, res3 = st.columns(3)
         
         with res1:
-            st.caption("Filtered SKUs")
+            st.caption("Filtered SKUs (Return vs. Orders)")
             sku_display_data = final_filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
-            sku_display_data.columns = ['SKU', 'Total Quantity']
+            sku_display_data.columns = ['SKU', 'Return Qty'] # Column name simplified
             
             # --- Return Percentage Calculation (Platform Filtered) ---
             if total_orders_platform_df is not None:
@@ -341,7 +336,7 @@ if uploaded_returns_files:
                 
                 # Aggregate filtered orders by SKU for the merge
                 total_orders_for_merge = orders_filtered_by_platform.groupby('Final_SKU')['Total_Orders'].sum().reset_index()
-                total_orders_for_merge.columns = ['SKU', 'Total_Orders']
+                total_orders_for_merge.columns = ['SKU', 'Total Orders'] # Column name simplified
                 
                 # Merge with SKU returns data
                 sku_display_data = pd.merge(
@@ -351,25 +346,32 @@ if uploaded_returns_files:
                     how='left'
                 )
                 
-                sku_display_data['Total_Orders'] = sku_display_data['Total_Orders'].fillna(0).astype(int)
+                sku_display_data['Total Orders'] = sku_display_data['Total Orders'].fillna(0).astype(int)
                 sku_display_data['Return %'] = np.where(
-                    sku_display_data['Total_Orders'] > 0,
-                    (sku_display_data['Total Quantity'] / sku_display_data['Total_Orders']) * 100,
+                    sku_display_data['Total Orders'] > 0,
+                    (sku_display_data['Return Qty'] / sku_display_data['Total Orders']) * 100,
                     0
                 )
                 
                 # Format to 00.00%
                 sku_display_data['Return %'] = sku_display_data['Return %'].apply(lambda x: f"{x:.2f}%")
 
-                sku_display_data = sku_display_data[['SKU', 'Total Quantity', 'Total_Orders', 'Return %']]
-                sku_display_data.rename(columns={'Total_Orders': 'Total Orders Sold (Filtered)'}, inplace=True)
-            # --- End Return Percentage Calculation ---
-
-            st.dataframe(
-                sku_display_data, 
-                use_container_width=True, 
-                height=500
-            )
+                sku_display_data = sku_display_data[['SKU', 'Return Qty', 'Total Orders', 'Return %']]
+                
+                # Display the data
+                st.dataframe(
+                    sku_display_data, 
+                    use_container_width=True, 
+                    height=500
+                )
+                
+            else:
+                # Agar Sales file upload nahi hui, toh sirf returns data dikhao
+                st.dataframe(
+                    sku_display_data.rename(columns={'Return Qty': 'Total Quantity'}), 
+                    use_container_width=True, 
+                    height=500
+                )
             
         with res2:
             st.caption("Filtered Reasons")
