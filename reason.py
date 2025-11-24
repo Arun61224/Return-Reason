@@ -321,7 +321,7 @@ if uploaded_returns_files:
         with res1:
             st.caption("Filtered SKUs (Return vs. Orders)")
             sku_display_data = final_filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
-            sku_display_data.columns = ['SKU', 'Return Qty'] # Column name simplified
+            sku_display_data.columns = ['SKU', 'Return Qty'] 
             
             # --- Return Percentage Calculation (Platform Filtered) ---
             if total_orders_platform_df is not None:
@@ -336,7 +336,7 @@ if uploaded_returns_files:
                 
                 # Aggregate filtered orders by SKU for the merge
                 total_orders_for_merge = orders_filtered_by_platform.groupby('Final_SKU')['Total_Orders'].sum().reset_index()
-                total_orders_for_merge.columns = ['SKU', 'Total Orders'] # Column name simplified
+                total_orders_for_merge.columns = ['SKU', 'Total Orders'] 
                 
                 # Merge with SKU returns data
                 sku_display_data = pd.merge(
@@ -356,7 +356,9 @@ if uploaded_returns_files:
                 # Format to 00.00%
                 sku_display_data['Return %'] = sku_display_data['Return %'].apply(lambda x: f"{x:.2f}%")
 
-                sku_display_data = sku_display_data[['SKU', 'Return Qty', 'Total Orders', 'Return %']]
+                # --- COLUMN REORDERING APPLIED HERE ---
+                sku_display_data = sku_display_data[['SKU', 'Total Orders', 'Return Qty', 'Return %']]
+                # --- END COLUMN REORDERING ---
                 
                 # Display the data
                 st.dataframe(
