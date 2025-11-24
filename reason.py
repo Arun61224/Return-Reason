@@ -202,6 +202,21 @@ def process_files(uploaded_files):
     
     return master_df
 
+# --- NEW: Helper function to convert DataFrame to CSV for download ---
+@st.cache_data
+def convert_df_to_csv(df):
+    # IMPORTANT: The output must be a string for download_button
+    return df.to_csv(index=False).encode('utf-8')
+
+# --- NEW: Helper function to convert DataFrame to Excel for download ---
+@st.cache_data
+def convert_df_to_excel(df):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Return_Analysis_Master')
+    processed_data = output.getvalue()
+    return processed_data
+
 # --- Streamlit App UI ---
 st.set_page_config(layout="wide")
 st.title("🛍️ Online Seller Return Analysis Dashboard")
@@ -220,6 +235,33 @@ if uploaded_files:
     
     if not master_df.empty:
         st.success(f"Successfully processed {len(uploaded_files)} files/archives. Total returned items: {master_df['Final_Qty'].sum()}")
+        
+        # --- NEW: Download Section ---
+        st.subheader("Download Full Data")
+        
+        col_down1, col_down2, col_down3, col_down4 = st.columns([1, 1, 1, 3])
+        
+        with col_down1:
+            csv_data = convert_df_to_csv(master_df)
+            st.download_button(
+                label="Download as CSV 💾",
+                data=csv_data,
+                file_name='combined_return_report.csv',
+                mime='text/csv',
+                help="Downloads the complete, combined master data in CSV format."
+            )
+        
+        with col_down2:
+            excel_data = convert_df_to_excel(master_df)
+            st.download_button(
+                label="Download as Excel 📑",
+                data=excel_data,
+                file_name='combined_return_report.xlsx',
+                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                help="Downloads the complete, combined master data in Excel format."
+            )
+        # --- END NEW: Download Section ---
+
         st.divider()
 
         # Sidebar filters hata diye gaye hain
@@ -303,6 +345,43 @@ if uploaded_files:
             platform_display_data = final_filtered_df.groupby('Platform')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
             platform_display_data.columns = ['Platform', 'Total Quantity']
             st.dataframe(platform_display_data, use_container_width=True, height=500)
+            
+        # --- NEW: Download Filtered Results ---
+        st.divider()
+        st.subheader("Download Filtered Aggregated Results")
+        
+        filter_down_col1, filter_down_col2, filter_down_col3, filter_down_col4 = st.columns(4)
+        
+        with filter_down_col1:
+            csv_data_sku = convert_df_to_csv(sku_display_data)
+            st.download_button(
+                label="Download Filtered SKUs (CSV) ⬇️",
+                data=csv_data_sku,
+                file_name='filtered_sku_summary.csv',
+                mime='text/csv',
+                help="Downloads the visible Filtered SKUs table."
+            )
+            
+        with filter_down_col2:
+            csv_data_reason = convert_df_to_csv(reason_display_data)
+            st.download_button(
+                label="Download Filtered Reasons (CSV) ⬇️",
+                data=csv_data_reason,
+                file_name='filtered_reason_summary.csv',
+                mime='text/csv',
+                help="Downloads the visible Filtered Reasons table."
+            )
+            
+        with filter_down_col3:
+            csv_data_platform = convert_df_to_csv(platform_display_data)
+            st.download_button(
+                label="Download Filtered Platforms (CSV) ⬇️",
+                data=csv_data_platform,
+                file_name='filtered_platform_summary.csv',
+                mime='text/csv',
+                help="Downloads the visible Filtered Platforms table."
+            )
+        # --- END NEW: Download Filtered Results ---
 
     else:
         # Yeh tab dikhega jab file upload hai, lekin data process nahi hua
@@ -310,4 +389,3 @@ if uploaded_files:
 else:
     # Yeh default message hai
     st.info("Please upload your return files from the sidebar to start the analysis.")
-
