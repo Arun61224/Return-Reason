@@ -49,7 +49,7 @@ DISPLAY_NAME_MAPPING = {
     'amazon_flex': 'Amazon Flex'
 }
 
-# --- Helper Function: Get platform from filename (UPDATED) ---
+# --- Helper Function: Get platform from filename ---
 def get_platform_from_name(filename_lower):
     # 'amazon_flex' ya 'amazon flex' ko pehle check karna zaroori hai
     if 'amazon_flex' in filename_lower or 'amazon flex' in filename_lower:
@@ -65,9 +65,8 @@ def get_platform_from_name(filename_lower):
     elif 'firstcry' in filename_lower:
         return 'firstcry'
     return None
-# --- END OF UPDATE ---
 
-# --- Helper Function: Extract data from a file object (FIXED) ---
+# --- Helper Function: Extract data from a file object ---
 def extract_data(file_object, platform, filename_for_error_msg):
     df = None
     try:
@@ -75,30 +74,23 @@ def extract_data(file_object, platform, filename_for_error_msg):
         
         # Read the file (Excel or CSV)
         if filename_for_error_msg.lower().endswith('.xlsx'):
-            # openpyxl default engine for reading excel
             df = pd.read_excel(file_object, engine='openpyxl')
         else:
-            # CSV ke liye encoding issues ho sakti hain
             try:
                 df = pd.read_csv(file_object)
             except UnicodeDecodeError:
-                # Agar UTF-8 fail ho, toh 'latin1' ya 'iso-8859-1' try karo
-                file_object.seek(0) # File pointer reset karo
+                file_object.seek(0)
                 df = pd.read_csv(file_object, encoding='latin1')
         
-        # Column names ko force karke clean karo
         df.columns = [str(col).strip() for col in df.columns]
-        
         qty_col_name = mapping.get('qty_col') 
         
         if qty_col_name:
-            # Clean SKU/Reason column names ko mapping se check karo
             clean_mapping = {
                 'sku_col': mapping['sku_col'].strip(),
                 'reason_col': mapping['reason_col'].strip(),
                 'qty_col': mapping['qty_col'].strip()
             }
-            
             cols_to_use = [clean_mapping['sku_col'], clean_mapping['reason_col'], clean_mapping['qty_col']]
             temp_df = df[cols_to_use].copy()
             temp_df.rename(columns={
@@ -107,12 +99,10 @@ def extract_data(file_object, platform, filename_for_error_msg):
                 clean_mapping['qty_col']: 'Final_Qty'
             }, inplace=True)
         else:
-            # Clean SKU/Reason column names ko mapping se check karo
             clean_mapping = {
                 'sku_col': mapping['sku_col'].strip(),
                 'reason_col': mapping['reason_col'].strip()
             }
-            
             cols_to_use = [clean_mapping['sku_col'], clean_mapping['reason_col']]
             temp_df = df[cols_to_use].copy()
             temp_df.rename(columns={
@@ -160,18 +150,14 @@ def process_files(uploaded_files):
         if filename.endswith('.zip'):
             st.info(f"Processing ZIP file: {uploaded_file.name}")
             try:
-                # Read zip file in memory
                 with zipfile.ZipFile(io.BytesIO(uploaded_file.getvalue()), 'r') as zf:
-                    # Loop over all files inside the zip
                     for internal_filename in zf.namelist():
-                        # Ignore Mac system files
                         if internal_filename.startswith('__MACOSX') or not (internal_filename.lower().endswith('.csv') or internal_filename.lower().endswith('.xlsx')):
                             continue
                         
                         platform = get_platform_from_name(internal_filename.lower())
                         
                         if platform:
-                            # Process the file from inside the zip
                             with zf.open(internal_filename) as f:
                                 temp_df = extract_data(f, platform, internal_filename)
                                 if temp_df is not None:
@@ -201,10 +187,9 @@ def process_files(uploaded_files):
     
     return master_df
 
-# --- Helper function to convert DataFrame to CSV for download (Needed for aggregated results) ---
+# --- Helper function to convert DataFrame to CSV for download ---
 @st.cache_data
 def convert_df_to_csv(df):
-    # The output must be a string for download_button
     return df.to_csv(index=False).encode('utf-8')
 
 # --- Streamlit App UI ---
@@ -226,15 +211,13 @@ if uploaded_files:
     if not master_df.empty:
         st.success(f"Successfully processed {len(uploaded_files)} files/archives. Total returned items: {master_df['Final_Qty'].sum()}")
         
-        # --- Full Data Download Section REMOVED to eliminate xlsxwriter error ---
-
         st.divider()
 
         filtered_df = master_df.copy()
         
         st.header("Overall Return Analysis")
         
-        # --- Cross-Filtering Logic ---
+        # --- Cross-Filtering Logic (Multiselect Slicers) ---
         
         # 1. Pehle teeno filters ke liye data banao
         sku_data = filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
@@ -249,48 +232,55 @@ if uploaded_files:
         platform_data.columns = ['Platform', 'Total Quantity']
         platform_data['Platform_with_Count'] = platform_data['Platform'] + " (" + platform_data['Total Quantity'].astype(str) + ")"
 
-        # 2. Dropdown lists banao
-        sku_list_for_dropdown = ["Select an SKU..."] + list(sku_data['SKU_with_Count'])
-        reason_list_for_dropdown = ["Select a Reason..."] + list(reason_data['Reason_with_Count'])
-        platform_list_dropdown = ["Select a Platform..."] + list(platform_data['Platform_with_Count'])
+        # 2. Multiselect lists banao 
+        sku_list_for_multiselect = list(sku_data['SKU_with_Count'])
+        reason_list_for_multiselect = list(reason_data['Reason_with_Count'])
+        platform_list_multiselect = list(platform_data['Platform_with_Count'])
         
-        # Session state ko check karo (Error fix)
-        if 'sku_search' not in st.session_state or st.session_state.sku_search not in sku_list_for_dropdown:
-            st.session_state.sku_search = "Select an SKU..."
-        if 'reason_search' not in st.session_state or st.session_state.reason_search not in reason_list_for_dropdown:
-            st.session_state.reason_search = "Select a Reason..."
-        if 'platform_search' not in st.session_state or st.session_state.platform_search not in platform_list_dropdown:
-            st.session_state.platform_search = "Select a Platform..."
-
-        # 3. Ab teeno filters ko TOP par dikhao
-        st.subheader("Cross-Filters")
+        # 3. Ab teeno filters ko TOP par dikhao (USING st.multiselect)
+        st.subheader("Cross-Slicers (Select Multiple Options)")
         col1, col2, col3 = st.columns(3)
         with col1:
-            sku_search = st.selectbox("Search/Select SKU:", options=sku_list_for_dropdown, key="sku_search")
+            sku_search_list = st.multiselect(
+                "Filter by SKU:", 
+                options=sku_list_for_multiselect, 
+                default=[],
+                key="sku_search"
+            )
         with col2:
-            reason_search = st.selectbox("Search/Select Reason:", options=reason_list_for_dropdown, key="reason_search")
+            reason_search_list = st.multiselect(
+                "Filter by Reason:", 
+                options=reason_list_for_multiselect,
+                default=[], 
+                key="reason_search"
+            )
         with col3:
-            platform_search = st.selectbox("Search/Select Platform:", options=platform_list_dropdown, key="platform_search")
+            platform_search_list = st.multiselect(
+                "Filter by Platform:", 
+                options=platform_list_multiselect,
+                default=[], 
+                key="platform_search"
+            )
 
-        # 4. Ab ek FINAL filtered DataFrame banao
+        # 4. Ab ek FINAL filtered DataFrame banao (UPDATED LOGIC)
         final_filtered_df = filtered_df.copy()
-        
-        if sku_search != "Select an SKU...":
-            selected_sku_name = sku_data[sku_data['SKU_with_Count'] == sku_search]['SKU'].values[0]
-            final_filtered_df = final_filtered_df[final_filtered_df['Final_SKU'] == selected_sku_name]
-        
-        if reason_search != "Select a Reason...":
-            selected_reason_name = reason_data[reason_data['Reason_with_Count'] == reason_search]['Reason'].values[0]
-            final_filtered_df = final_filtered_df[final_filtered_df['Final_Reason'] == selected_reason_name]
+
+        if sku_search_list:
+            selected_sku_names = [s.split(' (')[0] for s in sku_search_list]
+            final_filtered_df = final_filtered_df[final_filtered_df['Final_SKU'].isin(selected_sku_names)]
+
+        if reason_search_list:
+            selected_reason_names = [r.split(' (')[0] for r in reason_search_list]
+            final_filtered_df = final_filtered_df[final_filtered_df['Final_Reason'].isin(selected_reason_names)]
             
-        if platform_search != "Select a Platform...":
-            selected_platform_name = platform_data[platform_data['Platform_with_Count'] == platform_search]['Platform'].values[0]
-            final_filtered_df = final_filtered_df[final_filtered_df['Platform'] == selected_platform_name]
+        if platform_search_list:
+            selected_platform_names = [p.split(' (')[0] for p in platform_search_list]
+            final_filtered_df = final_filtered_df[final_filtered_df['Platform'].isin(selected_platform_names)]
             
         st.divider()
-        st.subheader("Filtered Results")
+        st.subheader(f"Filtered Summary Tables (Total Items: {final_filtered_df['Final_Qty'].sum()})")
 
-        # 5. Ab neeche teeno tables dikhao
+        # 5. Ab neeche teeno tables dikhao (NO CHARTS)
         res1, res2, res3 = st.columns(3)
         
         with res1:
@@ -311,7 +301,7 @@ if uploaded_files:
             platform_display_data.columns = ['Platform', 'Total Quantity']
             st.dataframe(platform_display_data, use_container_width=True, height=500)
             
-        # --- Download Filtered Aggregated Results (Desired Output) ---
+        # --- Download Filtered Aggregated Results ---
         st.divider()
         st.subheader("Download Filtered Aggregated Results")
         
@@ -349,8 +339,6 @@ if uploaded_files:
         # --- END Download Filtered Aggregated Results ---
 
     else:
-        # Yeh tab dikhega jab file upload hai, lekin data process nahi hua
         st.warning("No data found after processing. Please check your files or column names.")
 else:
-    # Yeh default message hai
     st.info("Please upload your return files from the sidebar to start the analysis.")
