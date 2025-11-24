@@ -217,6 +217,7 @@ def process_sales_data(sales_file):
 # --- Helper function to convert DataFrame to CSV for download ---
 @st.cache_data
 def convert_df_to_csv(df):
+    # This line ensures that the DataFrame index is NOT included in the CSV file (removes the "A" column)
     return df.to_csv(index=False).encode('utf-8')
 
 # --- Streamlit App UI ---
@@ -319,7 +320,7 @@ if uploaded_returns_files:
         res1, res2, res3 = st.columns(3)
         
         with res1:
-            # --- NEW MANUAL INPUTS FOR RETURN PERCENTAGE RANGE ---
+            # --- MANUAL INPUTS FOR RETURN PERCENTAGE RANGE ---
             st.caption("Filter SKUs by Return % Range (0.00% to 100.00%)")
             col_min, col_max = st.columns(2)
             
@@ -347,7 +348,6 @@ if uploaded_returns_files:
             # Error handling for input
             if min_pct > max_pct:
                 st.error("Minimum % value cannot be greater than Maximum % value.")
-                # Fallback to display full range if invalid input
                 min_pct, max_pct = 0.0, 100.0 
                 
             st.caption("Filtered SKUs (Return vs. Orders)")
@@ -387,7 +387,7 @@ if uploaded_returns_files:
                     0.0
                 )
                 
-                # --- APPLYING THE NEW MANUAL RETURN PERCENTAGE FILTER ---
+                # --- APPLYING THE MANUAL RETURN PERCENTAGE FILTER ---
                 sku_display_data = sku_display_data[
                     (sku_display_data['Return_Pct_Raw'] >= min_pct) & 
                     (sku_display_data['Return_Pct_Raw'] <= max_pct)
@@ -417,14 +417,12 @@ if uploaded_returns_files:
             
         with res2:
             st.caption("Filtered Reasons")
-            # This table respects SKU/Reason/Platform slicers but not the Return % filter
             reason_display_data = final_filtered_df.groupby('Final_Reason')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
             reason_display_data.columns = ['Reason', 'Total Quantity']
             st.dataframe(reason_display_data, use_container_width=True, height=500)
             
         with res3:
             st.caption("Filtered Platforms")
-            # This table respects SKU/Reason/Platform slicers but not the Return % filter
             platform_display_data = final_filtered_df.groupby('Platform')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
             platform_display_data.columns = ['Platform', 'Total Quantity']
             st.dataframe(platform_display_data, use_container_width=True, height=500)
@@ -444,7 +442,7 @@ if uploaded_returns_files:
                 data=csv_data_sku,
                 file_name='filtered_sku_summary_with_return_rate.csv',
                 mime='text/csv',
-                help="Downloads the visible Filtered SKUs table."
+                help="Downloads the visible Filtered SKUs table. The index column (A column) is removed."
             )
             
         with filter_down_col2:
