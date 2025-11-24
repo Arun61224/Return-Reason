@@ -46,14 +46,14 @@ DISPLAY_NAME_MAPPING = {
     'ajio': 'Ajio',
     'meesho': 'Meesho',
     'firstcry': 'Firstcry',
-    'amazon_flex': 'Amazon Flex' # <-- Display naam add kiya
+    'amazon_flex': 'Amazon Flex'
 }
 
 # --- Helper Function: Get platform from filename (UPDATED) ---
 def get_platform_from_name(filename_lower):
     # 'amazon_flex' ya 'amazon flex' ko pehle check karna zaroori hai
     if 'amazon_flex' in filename_lower or 'amazon flex' in filename_lower:
-        return 'amazon_flex'  # Hamesha internal key 'amazon_flex' hi return karo
+        return 'amazon_flex'
     elif 'amazon' in filename_lower:
         return 'amazon'
     elif 'flipkart' in filename_lower:
@@ -75,6 +75,7 @@ def extract_data(file_object, platform, filename_for_error_msg):
         
         # Read the file (Excel or CSV)
         if filename_for_error_msg.lower().endswith('.xlsx'):
+            # openpyxl default engine for reading excel
             df = pd.read_excel(file_object, engine='openpyxl')
         else:
             # CSV ke liye encoding issues ho sakti hain
@@ -85,10 +86,8 @@ def extract_data(file_object, platform, filename_for_error_msg):
                 file_object.seek(0) # File pointer reset karo
                 df = pd.read_csv(file_object, encoding='latin1')
         
-        # --- YEH HAI FIX (Extra space ke liye) ---
         # Column names ko force karke clean karo
         df.columns = [str(col).strip() for col in df.columns]
-        # --- END OF FIX ---
         
         qty_col_name = mapping.get('qty_col') 
         
@@ -202,20 +201,11 @@ def process_files(uploaded_files):
     
     return master_df
 
-# --- NEW: Helper function to convert DataFrame to CSV for download ---
+# --- Helper function to convert DataFrame to CSV for download (Needed for aggregated results) ---
 @st.cache_data
 def convert_df_to_csv(df):
-    # IMPORTANT: The output must be a string for download_button
+    # The output must be a string for download_button
     return df.to_csv(index=False).encode('utf-8')
-
-# --- NEW: Helper function to convert DataFrame to Excel for download ---
-@st.cache_data
-def convert_df_to_excel(df):
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Return_Analysis_Master')
-    processed_data = output.getvalue()
-    return processed_data
 
 # --- Streamlit App UI ---
 st.set_page_config(layout="wide")
@@ -236,35 +226,10 @@ if uploaded_files:
     if not master_df.empty:
         st.success(f"Successfully processed {len(uploaded_files)} files/archives. Total returned items: {master_df['Final_Qty'].sum()}")
         
-        # --- NEW: Download Section ---
-        st.subheader("Download Full Data")
-        
-        col_down1, col_down2, col_down3, col_down4 = st.columns([1, 1, 1, 3])
-        
-        with col_down1:
-            csv_data = convert_df_to_csv(master_df)
-            st.download_button(
-                label="Download as CSV 💾",
-                data=csv_data,
-                file_name='combined_return_report.csv',
-                mime='text/csv',
-                help="Downloads the complete, combined master data in CSV format."
-            )
-        
-        with col_down2:
-            excel_data = convert_df_to_excel(master_df)
-            st.download_button(
-                label="Download as Excel 📑",
-                data=excel_data,
-                file_name='combined_return_report.xlsx',
-                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                help="Downloads the complete, combined master data in Excel format."
-            )
-        # --- END NEW: Download Section ---
+        # --- Full Data Download Section REMOVED to eliminate xlsxwriter error ---
 
         st.divider()
 
-        # Sidebar filters hata diye gaye hain
         filtered_df = master_df.copy()
         
         st.header("Overall Return Analysis")
@@ -346,7 +311,7 @@ if uploaded_files:
             platform_display_data.columns = ['Platform', 'Total Quantity']
             st.dataframe(platform_display_data, use_container_width=True, height=500)
             
-        # --- NEW: Download Filtered Results ---
+        # --- Download Filtered Aggregated Results (Desired Output) ---
         st.divider()
         st.subheader("Download Filtered Aggregated Results")
         
@@ -381,7 +346,7 @@ if uploaded_files:
                 mime='text/csv',
                 help="Downloads the visible Filtered Platforms table."
             )
-        # --- END NEW: Download Filtered Results ---
+        # --- END Download Filtered Aggregated Results ---
 
     else:
         # Yeh tab dikhega jab file upload hai, lekin data process nahi hua
