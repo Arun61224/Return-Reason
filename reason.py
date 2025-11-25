@@ -213,26 +213,22 @@ def process_sales_data(sales_file):
         st.sidebar.error(f"Error processing Sales Data: {e}")
         return None
 
-# --- UPDATED: Helper function to convert DataFrame to Excel with Table Formatting ---
+# --- ULTIMATE FIXED: Helper function to convert DataFrame to Excel with Table Formatting ---
 @st.cache_data
 def convert_df_to_excel(df, sheet_name='SKU_Summary'):
     output = io.BytesIO()
     
     # Use ExcelWriter with xlsxwriter engine
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        # Write the DataFrame to the sheet
+        
+        # Write the entire DataFrame to the sheet FIRST
         df.to_excel(writer, index=False, sheet_name=sheet_name)
         
         workbook = writer.book
         worksheet = writer.sheets[sheet_name]
 
         # Define the Excel format for percentage (two decimal places)
-        # This format is essential to display the 0-1 range number correctly as a percentage in Excel.
         percent_format = workbook.add_format({'num_format': '0.00%'})
-        
-        # Define the range for the table
-        max_row = len(df)
-        max_col = len(df.columns) - 1
         
         # Get column index for 'Return %' (0-indexed)
         try:
@@ -240,32 +236,50 @@ def convert_df_to_excel(df, sheet_name='SKU_Summary'):
         except KeyError:
             percent_col_index = -1
         
-        # Add an Excel Table with a built-in style
+        # 1. Apply the percentage format to the data cells (Rows 1 to max_row)
+        if percent_col_index != -1:
+            max_row = len(df)
+            
+            # Convert the numeric percentage column (0-1 range) to a list of lists 
+            # to write it separately and apply the format explicitly.
+            percent_data = df['Return %'].tolist()
+            
+            # Loop through the data rows and apply format to each cell
+            for row_num, value in enumerate(percent_data):
+                # Row numbers in Excel are 1-indexed for the data (after the header row 0)
+                # Note: `row_num` here is 0-indexed corresponding to the DataFrame index
+                worksheet.write(row_num + 1, percent_col_index, value, percent_format)
+
+            # Auto-adjust column width for the percentage column
+            worksheet.set_column(percent_col_index, percent_col_index, 10)
+            
+        # 2. Re-write the Table Structure using the original df and adjusted columns
+        max_col = len(df.columns) - 1
+        
         try:
+            # We must use the original structure's data range to define the table
             worksheet.add_table(0, 0, max_row, max_col, {
-                'data': df.values.tolist(),  
+                'data': df.values.tolist(), # NOTE: This data is ignored for the Return % column since we wrote it above
                 'columns': [{'header': col} for col in df.columns],
                 'style': 'TableStyleMedium2', # Blue/Green style 
                 'autofilter': 1,
                 'name': 'ReturnAnalysisTable'
             })
         except Exception as e:
+            # This catch is for safety; table creation usually works fine.
             print(f"Failed to add Excel table format: {e}")
 
-        # Apply the percentage format to the entire column if found
-        if percent_col_index != -1:
-            # +1 since Excel is 1-indexed, and we format rows 1 to max_row (data rows)
-            # The percentage column is correctly identified and formatted here.
-            worksheet.set_column(percent_col_index, percent_col_index, 10, percent_format)
 
-        # Auto-adjust column widths for better display (optional)
+        # 3. Auto-adjust width for all other columns
         for i, col in enumerate(df.columns):
-            max_len = max(df[col].astype(str).str.len().max(), len(col)) + 2
-            worksheet.set_column(i, i, max_len)
+            if i != percent_col_index:
+                max_len = max(df[col].astype(str).str.len().max(), len(col)) + 2
+                worksheet.set_column(i, i, max_len)
+
 
     processed_data = output.getvalue()
     return processed_data
-# --- END UPDATED FUNCTION ---
+# --- END ULTIMATE FIXED FUNCTION ---
 
 # --- Streamlit App UI ---
 st.set_page_config(layout="wide")
@@ -468,17 +482,15 @@ if uploaded_returns_files:
                 
                 sku_display_data['Total Orders'] = sku_display_data['Total Orders'].fillna(0).astype(int)
                 
-                # *******************************************************************
-                # *** FIX APPLIED HERE: Calculate Return_Pct_Raw as 0-1 range ***
-                # *******************************************************************
+                # FIX APPLIED: Calculate Return_Pct_Raw as 0-1 range (e.g., 0.1550)
                 sku_display_data['Return_Pct_Raw'] = np.where(
                     sku_display_data['Total Orders'] > 0,
-                    (sku_display_data['Return Qty'] / sku_display_data['Total Orders']), # Now 0-1 range (e.g., 0.1550)
+                    (sku_display_data['Return Qty'] / sku_display_data['Total Orders']), 
                     0.0
                 )
                 
                 # --- APPLYING THE MANUAL RETURN PERCENTAGE FILTER ---
-                # NOTE: We filter on the RAW percentage multiplied by 100 (i.e., min_pct is 15.00)
+                # NOTE: We filter on the RAW percentage multiplied by 100 
                 sku_display_data = sku_display_data[
                     (sku_display_data['Return_Pct_Raw'] * 100 >= min_pct) & 
                     (sku_display_data['Return_Pct_Raw'] * 100 <= max_pct)
@@ -497,10 +509,9 @@ if uploaded_returns_files:
                 ).fillna('') 
                 
                 # **IMPORTANT:** Rename the RAW (0-1) column to 'Return %' for the export DataFrame
-                sku_final_export_data.rename(columns={'Return_Pct_Raw': 'Return %'}, inplace=True)
-                
-                # Delete the string formatted Return % column created for Streamlit display
+                # We need to drop the string-formatted column first if it exists from the previous merge step
                 sku_final_export_data.drop(columns=['Return %_y'], inplace=True, errors='ignore')
+                sku_final_export_data.rename(columns={'Return_Pct_Raw': 'Return %'}, inplace=True)
                 
                 # --- APPLY FINAL EXPORT DATA TRANSFORMATIONS (ORDERING) ---
                 # 1. Change Column Order: SKU | Total Orders | Return Qty | Return % | Reason 1...
