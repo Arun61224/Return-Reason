@@ -511,15 +511,14 @@ if uploaded_returns_files:
         cols = sku_final_export_data.columns.tolist()
         reason_cols = [col for col in cols if col.startswith('Reason ')]
         
-        # Determine core columns based on whether sales data was present
+        # Define the Excel/CSV DataFrames based on sales data availability
         if 'Total Orders' in sku_final_export_data.columns:
-            # Sales data is present. Export Return_Pct_Raw (decimal) for Excel.
             
-            # 1. Create the final Excel/CSV structure (Return % is the string one for CSV/Web, Return_Pct_Raw for Excel data)
+            # 1. Create the final Excel/CSV structure
             sku_final_export_csv_df = sku_final_export_data.drop(columns=['Return_Pct_Raw'], errors='ignore')
             sku_final_export_excel_df = sku_final_export_data.drop(columns=['Return %'], errors='ignore')
             
-            # 2. Rename the RAW column for Excel to match the header the user expects
+            # 2. Rename the RAW column for Excel
             sku_final_export_excel_df.rename(columns={'Return_Pct_Raw': 'Return % (Decimal)'}, inplace=True)
             
             # 3. Define Final Export Order
@@ -534,7 +533,8 @@ if uploaded_returns_files:
             final_sku_excel_df = sku_final_export_excel_df.loc[:, final_export_excel_order]
             
             csv_help_text = f"Downloads the SKU summary including Total Orders, Return % (string), and Top {TOP_N_REASONS} Reasons."
-            excel_help_text = f"Downloads the SKU summary including Total Orders, Return % (as decimal for quick formatting in Excel), and Top {TOP_N_N_REASONS} Reasons."
+            # BUG FIXED HERE: TOP_N_N_REASONS -> TOP_N_REASONS
+            excel_help_text = f"Downloads the SKU summary including Total Orders, Return % (as decimal for quick formatting in Excel), and Top {TOP_N_REASONS} Reasons."
         else:
             # Sales data is NOT present. Only Returns Quantity and Reasons.
             core_cols = ['SKU', 'Total Quantity']
