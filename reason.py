@@ -213,7 +213,7 @@ def process_sales_data(sales_file):
         st.sidebar.error(f"Error processing Sales Data: {e}")
         return None
 
-# --- ULTIMATE FIXED: Helper function to convert DataFrame to Excel with Table Formatting ---
+# --- SIMPLIFIED FIX: Helper function to convert DataFrame to Excel with simple Column Formatting ---
 @st.cache_data
 def convert_df_to_excel(df, sheet_name='SKU_Summary'):
     output = io.BytesIO()
@@ -221,7 +221,7 @@ def convert_df_to_excel(df, sheet_name='SKU_Summary'):
     # Use ExcelWriter with xlsxwriter engine
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         
-        # Write the entire DataFrame to the sheet FIRST
+        # Write the entire DataFrame to the sheet 
         df.to_excel(writer, index=False, sheet_name=sheet_name)
         
         workbook = writer.book
@@ -236,50 +236,25 @@ def convert_df_to_excel(df, sheet_name='SKU_Summary'):
         except KeyError:
             percent_col_index = -1
         
-        # 1. Apply the percentage format to the data cells (Rows 1 to max_row)
+        # Apply the percentage format to the entire column if found
         if percent_col_index != -1:
-            max_row = len(df)
-            
-            # Convert the numeric percentage column (0-1 range) to a list of lists 
-            # to write it separately and apply the format explicitly.
-            percent_data = df['Return %'].tolist()
-            
-            # Loop through the data rows and apply format to each cell
-            for row_num, value in enumerate(percent_data):
-                # Row numbers in Excel are 1-indexed for the data (after the header row 0)
-                # Note: `row_num` here is 0-indexed corresponding to the DataFrame index
-                worksheet.write(row_num + 1, percent_col_index, value, percent_format)
+            # We format the column from row 1 (the first data row, skipping header row 0) 
+            # to the last row (len(df))
+            worksheet.set_column(
+                percent_col_index, # Column start
+                percent_col_index, # Column end
+                10,                # Width
+                percent_format     # Format
+            )
 
-            # Auto-adjust column width for the percentage column
-            worksheet.set_column(percent_col_index, percent_col_index, 10)
-            
-        # 2. Re-write the Table Structure using the original df and adjusted columns
-        max_col = len(df.columns) - 1
-        
-        try:
-            # We must use the original structure's data range to define the table
-            worksheet.add_table(0, 0, max_row, max_col, {
-                'data': df.values.tolist(), # NOTE: This data is ignored for the Return % column since we wrote it above
-                'columns': [{'header': col} for col in df.columns],
-                'style': 'TableStyleMedium2', # Blue/Green style 
-                'autofilter': 1,
-                'name': 'ReturnAnalysisTable'
-            })
-        except Exception as e:
-            # This catch is for safety; table creation usually works fine.
-            print(f"Failed to add Excel table format: {e}")
-
-
-        # 3. Auto-adjust width for all other columns
+        # Auto-adjust column widths for better display (optional)
         for i, col in enumerate(df.columns):
-            if i != percent_col_index:
-                max_len = max(df[col].astype(str).str.len().max(), len(col)) + 2
-                worksheet.set_column(i, i, max_len)
-
-
+            max_len = max(df[col].astype(str).str.len().max(), len(col)) + 2
+            worksheet.set_column(i, i, max_len)
+            
     processed_data = output.getvalue()
     return processed_data
-# --- END ULTIMATE FIXED FUNCTION ---
+# --- END SIMPLIFIED FIXED FUNCTION ---
 
 # --- Streamlit App UI ---
 st.set_page_config(layout="wide")
@@ -482,7 +457,7 @@ if uploaded_returns_files:
                 
                 sku_display_data['Total Orders'] = sku_display_data['Total Orders'].fillna(0).astype(int)
                 
-                # FIX APPLIED: Calculate Return_Pct_Raw as 0-1 range (e.g., 0.1550)
+                # Calculate Return_Pct_Raw as 0-1 range (e.g., 0.1550) - THIS IS CRITICAL FOR EXCEL
                 sku_display_data['Return_Pct_Raw'] = np.where(
                     sku_display_data['Total Orders'] > 0,
                     (sku_display_data['Return Qty'] / sku_display_data['Total Orders']), 
@@ -509,7 +484,6 @@ if uploaded_returns_files:
                 ).fillna('') 
                 
                 # **IMPORTANT:** Rename the RAW (0-1) column to 'Return %' for the export DataFrame
-                # We need to drop the string-formatted column first if it exists from the previous merge step
                 sku_final_export_data.drop(columns=['Return %_y'], inplace=True, errors='ignore')
                 sku_final_export_data.rename(columns={'Return_Pct_Raw': 'Return %'}, inplace=True)
                 
@@ -539,7 +513,7 @@ if uploaded_returns_files:
                     use_container_width=True, 
                     height=500
                 )
-                st.caption(f"Note: The Excel download contains: **SKU, Total Orders, Return Qty**, and **Return %** (formatted correctly as a percentage in Excel Table).")
+                st.caption(f"Note: The Excel download contains: **SKU, Total Orders, Return Qty**, and **Return %** (formatted correctly as a percentage in Excel).")
                 
             else:
                 # Agar Sales file upload nahi hui, toh sirf returns data dikhao
@@ -563,7 +537,7 @@ if uploaded_returns_files:
                     use_container_width=True, 
                     height=500
                 )
-                st.caption(f"Note: The Excel download will contain: **SKU, Total Quantity**, and **Top {TOP_N_REASONS} Reasons** (formatted as an Excel Table).")
+                st.caption(f"Note: The Excel download will contain: **SKU, Total Quantity**, and **Top {TOP_N_REASONS} Reasons**.")
             
         with res2:
             st.caption("Filtered Reasons")
@@ -580,20 +554,20 @@ if uploaded_returns_files:
         # --- Download Filtered Aggregated Results ---
         st.divider()
         st.subheader("Download Filtered Aggregated Results")
-        st.caption("Downloads as an Excel file with **SKU | Total Orders | Return Qty | Return % | Reason 1...** columns, formatted as an Excel Table.")
+        st.caption("Downloads as an Excel file with **SKU | Total Orders | Return Qty | Return % | Reason 1...** columns.")
         
         filter_down_col1, filter_down_col2, filter_down_col3, filter_down_col4 = st.columns(4)
         
         with filter_down_col1:
-            # Convert the complete export DataFrame to an Excel file with Table formatting
+            # Convert the complete export DataFrame to an Excel file with Column formatting
             excel_data_sku = convert_df_to_excel(sku_final_export_data)
             
             st.download_button(
-                label="Download Filtered SKUs (Excel Table) ⬇️",
+                label="Download Filtered SKUs (Excel) ⬇️",
                 data=excel_data_sku,
                 file_name='final_sku_returns_report_formatted.xlsx',
                 mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                help=f"Downloads the final SKU summary as an Excel file, formatted as a Table (Style: Medium 2)."
+                help=f"Downloads the final SKU summary as an Excel file, with Return % formatted."
             )
             
         with filter_down_col2:
