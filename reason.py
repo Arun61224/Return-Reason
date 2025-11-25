@@ -533,7 +533,6 @@ if uploaded_returns_files:
             final_sku_excel_df = sku_final_export_excel_df.loc[:, final_export_excel_order]
             
             csv_help_text = f"Downloads the SKU summary including Total Orders, Return % (string), and Top {TOP_N_REASONS} Reasons."
-            # BUG FIXED HERE: TOP_N_N_REASONS -> TOP_N_REASONS
             excel_help_text = f"Downloads the SKU summary including Total Orders, Return % (as decimal for quick formatting in Excel), and Top {TOP_N_REASONS} Reasons."
         else:
             # Sales data is NOT present. Only Returns Quantity and Reasons.
