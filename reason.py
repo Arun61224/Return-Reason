@@ -227,6 +227,7 @@ def convert_df_to_excel(df, sheet_name='SKU_Summary'):
         worksheet = writer.sheets[sheet_name]
 
         # Define the Excel format for percentage (two decimal places)
+        # This format is essential to display the 0-1 range number correctly as a percentage in Excel.
         percent_format = workbook.add_format({'num_format': '0.00%'})
         
         # Define the range for the table
@@ -254,6 +255,7 @@ def convert_df_to_excel(df, sheet_name='SKU_Summary'):
         # Apply the percentage format to the entire column if found
         if percent_col_index != -1:
             # +1 since Excel is 1-indexed, and we format rows 1 to max_row (data rows)
+            # The percentage column is correctly identified and formatted here.
             worksheet.set_column(percent_col_index, percent_col_index, 10, percent_format)
 
         # Auto-adjust column widths for better display (optional)
@@ -466,15 +468,17 @@ if uploaded_returns_files:
                 
                 sku_display_data['Total Orders'] = sku_display_data['Total Orders'].fillna(0).astype(int)
                 
-                # Calculate return percentage as a raw float for filtering
+                # *******************************************************************
+                # *** FIX APPLIED HERE: Calculate Return_Pct_Raw as 0-1 range ***
+                # *******************************************************************
                 sku_display_data['Return_Pct_Raw'] = np.where(
                     sku_display_data['Total Orders'] > 0,
-                    (sku_display_data['Return Qty'] / sku_display_data['Total Orders']), # Divide by 100 later in Excel
+                    (sku_display_data['Return Qty'] / sku_display_data['Total Orders']), # Now 0-1 range (e.g., 0.1550)
                     0.0
                 )
                 
                 # --- APPLYING THE MANUAL RETURN PERCENTAGE FILTER ---
-                # NOTE: We filter on the RAW percentage (multiplied by 100)
+                # NOTE: We filter on the RAW percentage multiplied by 100 (i.e., min_pct is 15.00)
                 sku_display_data = sku_display_data[
                     (sku_display_data['Return_Pct_Raw'] * 100 >= min_pct) & 
                     (sku_display_data['Return_Pct_Raw'] * 100 <= max_pct)
@@ -492,13 +496,13 @@ if uploaded_returns_files:
                     how='left'
                 ).fillna('') 
                 
-                # **IMPORTANT:** Rename 'Return_Pct_Raw' to 'Return %' for the export dataframe
+                # **IMPORTANT:** Rename the RAW (0-1) column to 'Return %' for the export DataFrame
                 sku_final_export_data.rename(columns={'Return_Pct_Raw': 'Return %'}, inplace=True)
                 
-                # Delete the string formatted Return % column
+                # Delete the string formatted Return % column created for Streamlit display
                 sku_final_export_data.drop(columns=['Return %_y'], inplace=True, errors='ignore')
                 
-                # --- APPLY FINAL EXPORT DATA TRANSFORMATIONS ---
+                # --- APPLY FINAL EXPORT DATA TRANSFORMATIONS (ORDERING) ---
                 # 1. Change Column Order: SKU | Total Orders | Return Qty | Return % | Reason 1...
                 cols = sku_final_export_data.columns.tolist()
                 
