@@ -316,6 +316,23 @@ if uploaded_returns_files:
         st.divider()
         st.subheader(f"Filtered Summary Tables (Total Items: {final_filtered_df['Final_Qty'].sum()})")
 
+        # --- REASON AGGREGATION LOGIC (NEW) ---
+        # 1. Group by SKU and Reason, summing the quantities
+        reason_agg = final_filtered_df.groupby(['Final_SKU', 'Final_Reason'])['Final_Qty'].sum().reset_index()
+        
+        # 2. Format the output string: "Reason (Count)"
+        reason_agg['Formatted_Reason'] = reason_agg.apply(
+            lambda row: f"{row['Final_Reason']} ({row['Final_Qty']})", axis=1
+        )
+        
+        # 3. Concatenate all formatted reasons for each SKU, separated by ' | '
+        sku_reasons = reason_agg.groupby('Final_SKU')['Formatted_Reason'].apply(
+            lambda x: ' | '.join(x)
+        ).reset_index()
+        sku_reasons.columns = ['SKU', 'Top Reasons (Count)']
+        # --- END REASON AGGREGATION LOGIC ---
+
+
         # 5. Ab neeche teeno tables dikhao
         res1, res2, res3 = st.columns(3)
         
@@ -397,23 +414,40 @@ if uploaded_returns_files:
                 # Format the percentage column for display (00.00%)
                 sku_display_data['Return %'] = sku_display_data['Return_Pct_Raw'].apply(lambda x: f"{x:.2f}%")
                 
-                # Final column selection and reordering (Total Orders first)
-                sku_display_data = sku_display_data[['SKU', 'Total Orders', 'Return Qty', 'Return %']]
+                # --- MERGE REASONS DATA HERE ---
+                sku_display_data = pd.merge(
+                    sku_display_data,
+                    sku_reasons,
+                    on='SKU',
+                    how='left'
+                )
                 
-                # Display the data
+                # Final column selection and reordering
+                sku_display_data = sku_display_data[['SKU', 'Total Orders', 'Return Qty', 'Return %', 'Top Reasons (Count)']]
+                
+                # Display the data (hiding the long reason column for better table width in display, but it will be in export)
                 st.dataframe(
-                    sku_display_data, 
+                    sku_display_data.drop(columns=['Top Reasons (Count)']), 
                     use_container_width=True, 
                     height=500
                 )
+                st.caption("Note: The 'Top Reasons (Count)' column is included in the CSV download.")
                 
             else:
                 # Agar Sales file upload nahi hui, toh sirf returns data dikhao
+                # Merge Reasons data for display if sales data is missing
+                sku_display_data = pd.merge(
+                    sku_display_data.rename(columns={'Return Qty': 'Total Quantity'}),
+                    sku_reasons,
+                    on='SKU',
+                    how='left'
+                )
                 st.dataframe(
-                    sku_display_data.rename(columns={'Return Qty': 'Total Quantity'}), 
+                    sku_display_data.drop(columns=['Top Reasons (Count)']), 
                     use_container_width=True, 
                     height=500
                 )
+                st.caption("Note: The 'Top Reasons (Count)' column is included in the CSV download.")
             
         with res2:
             st.caption("Filtered Reasons")
@@ -430,19 +464,19 @@ if uploaded_returns_files:
         # --- Download Filtered Aggregated Results ---
         st.divider()
         st.subheader("Download Filtered Aggregated Results")
-        st.caption("Note: Downloaded SKUs will respect the Return Percentage Range filter.")
+        st.caption("Note: Downloaded SKUs will contain the full 'Top Reasons (Count)' column.")
         
         filter_down_col1, filter_down_col2, filter_down_col3, filter_down_col4 = st.columns(4)
         
         with filter_down_col1:
-            # We convert the final displayed SKU data (which is already filtered by the manual input)
+            # We convert the final displayed SKU data (which includes the reason column)
             csv_data_sku = convert_df_to_csv(sku_display_data)
             st.download_button(
                 label="Download Filtered SKUs (CSV) ⬇️",
                 data=csv_data_sku,
-                file_name='filtered_sku_summary_with_return_rate.csv',
+                file_name='filtered_sku_summary_with_reasons.csv',
                 mime='text/csv',
-                help="Downloads the visible Filtered SKUs table. The index column (A column) is removed."
+                help="Downloads the visible Filtered SKUs table, including the 'Top Reasons (Count)' column."
             )
             
         with filter_down_col2:
