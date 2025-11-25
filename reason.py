@@ -171,7 +171,7 @@ def process_returns_files(uploaded_files):
     
     return master_df
 
-# --- NEW: Function to process Sales/Order Data (Grouped by SKU AND Platform) ---
+# --- Function to process Sales/Order Data (Grouped by SKU AND Platform) ---
 def process_sales_data(sales_file):
     if not sales_file:
         return None
@@ -212,13 +212,16 @@ def process_sales_data(sales_file):
     except Exception as e:
         st.sidebar.error(f"Error processing Sales Data: {e}")
         return None
-# --- END NEW FUNCTION ---
 
-# --- Helper function to convert DataFrame to CSV for download ---
+# --- Helper function to convert DataFrame to Excel (for Download) ---
 @st.cache_data
-def convert_df_to_csv(df):
-    # This line ensures that the DataFrame index is NOT included in the CSV file (removes the "A" column)
-    return df.to_csv(index=False).encode('utf-8')
+def convert_df_to_excel(df, sheet_name='SKU_Summary'):
+    output = io.BytesIO()
+    # Using 'xlsxwriter' engine for better formatting capabilities if needed later, but here just for standard save
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name=sheet_name)
+    processed_data = output.getvalue()
+    return processed_data
 
 # --- Streamlit App UI ---
 st.set_page_config(layout="wide")
@@ -316,22 +319,24 @@ if uploaded_returns_files:
         st.divider()
         st.subheader(f"Filtered Summary Tables (Total Items: {final_filtered_df['Final_Qty'].sum()})")
 
-        # --- REASON AGGREGATION LOGIC (All Reasons in one column) ---
+        # --- REASON PIVOTING LOGIC (ALL REASONS IN SEPARATE COLUMNS) ---
         # 1. Group by SKU and Reason, summing the quantities
         reason_agg = final_filtered_df.groupby(['Final_SKU', 'Final_Reason'])['Final_Qty'].sum().reset_index()
         
-        # 2. Format the output string: "Reason (Count)"
-        reason_agg['Formatted_Reason'] = reason_agg.apply(
-            lambda row: f"{row['Final_Reason']} ({row['Final_Qty']})", axis=1
-        )
+        # 2. Create the column name dynamically: 'Reason: [Reason Name]'
+        reason_agg['New_Col_Name'] = 'Reason: ' + reason_agg['Final_Reason'].astype(str)
         
-        # 3. Concatenate all formatted reasons for each SKU, separated by ' | '
-        # This will put ALL reasons for an SKU into a single cell in the 'All Reasons (Count)' column
-        sku_all_reasons = reason_agg.groupby('Final_SKU')['Formatted_Reason'].apply(
-            lambda x: ' | '.join(x)
+        # 3. Pivot the data: Index=SKU, Columns=Reason Name, Values=Quantity
+        sku_reasons_pivot = reason_agg.pivot(
+            index='Final_SKU', 
+            columns='New_Col_Name', 
+            values='Final_Qty'
         ).reset_index()
-        sku_all_reasons.columns = ['SKU', 'All Reasons (Count)']
-        # --- END REASON AGGREGATION LOGIC ---
+        sku_reasons_pivot.rename(columns={'Final_SKU': 'SKU'}, inplace=True)
+        
+        # Fill NaN values with 0 for quantities
+        sku_reasons_pivot = sku_reasons_pivot.fillna(0).astype({col: int for col in sku_reasons_pivot.columns if col != 'SKU'})
+        # --- END REASON PIVOTING LOGIC ---
 
 
         # 5. Ab neeche teeno tables dikhao
@@ -415,14 +420,13 @@ if uploaded_returns_files:
                 # Format the percentage column for display (00.00%)
                 sku_display_data['Return %'] = sku_display_data['Return_Pct_Raw'].apply(lambda x: f"{x:.2f}%")
                 
-                # --- MERGE ALL REASONS DATA HERE (FOR EXPORT) ---
-                # We are merging the single aggregated column 'All Reasons (Count)'
-                sku_display_data = pd.merge(
+                # --- MERGE ALL REASONS PIVOT DATA HERE (FOR EXCEL EXPORT) ---
+                sku_final_export_data = pd.merge(
                     sku_display_data,
-                    sku_all_reasons,
+                    sku_reasons_pivot,
                     on='SKU',
                     how='left'
-                ).fillna({'All Reasons (Count)': ''}) # Fill NaN (where no reason data) with empty strings
+                ).fillna(0) # Fill NaN in reason columns with 0
                 
                 # --- FINAL DISPLAY DATA (ONLY CORE COLUMNS) ---
                 # This ensures only the core columns are shown in st.dataframe
@@ -434,17 +438,17 @@ if uploaded_returns_files:
                     use_container_width=True, 
                     height=500
                 )
-                st.caption("Note: All aggregated reasons for each SKU are included in the **'All Reasons (Count)'** column in the **CSV download**.")
+                st.caption("Note: All reasons are included in separate columns in the **Excel (.xlsx) download**.")
                 
             else:
                 # Agar Sales file upload nahi hui, toh sirf returns data dikhao
                 # Merge All Reasons data for export if sales data is missing
-                sku_display_data = pd.merge(
+                sku_final_export_data = pd.merge(
                     sku_display_data.rename(columns={'Return Qty': 'Total Quantity'}),
-                    sku_all_reasons,
+                    sku_reasons_pivot,
                     on='SKU',
                     how='left'
-                ).fillna({'All Reasons (Count)': ''})
+                ).fillna(0)
                 
                 display_cols = ['SKU', 'Total Quantity']
                 st.dataframe(
@@ -452,7 +456,7 @@ if uploaded_returns_files:
                     use_container_width=True, 
                     height=500
                 )
-                st.caption("Note: All aggregated reasons for each SKU are included in the **'All Reasons (Count)'** column in the **CSV download**.")
+                st.caption("Note: All reasons are included in separate columns in the **Excel (.xlsx) download**.")
             
         with res2:
             st.caption("Filtered Reasons")
@@ -469,23 +473,25 @@ if uploaded_returns_files:
         # --- Download Filtered Aggregated Results ---
         st.divider()
         st.subheader("Download Filtered Aggregated Results")
-        st.caption("The downloaded SKUs CSV will include all aggregated reasons in one column.")
+        st.caption("Downloads as an Excel file with all reasons in separate columns.")
         
         filter_down_col1, filter_down_col2, filter_down_col3, filter_down_col4 = st.columns(4)
         
         with filter_down_col1:
-            # We convert the final displayed SKU data (which includes the 'All Reasons (Count)' column)
-            csv_data_sku = convert_df_to_csv(sku_display_data)
+            # Convert the complete export DataFrame to an Excel file
+            excel_data_sku = convert_df_to_excel(sku_final_export_data)
+            
             st.download_button(
-                label="Download Filtered SKUs (CSV) ⬇️",
-                data=csv_data_sku,
-                file_name='filtered_sku_summary_with_all_reasons.csv',
-                mime='text/csv',
-                help=f"Downloads the SKUs summary, including all aggregated reasons (with counts) in one column."
+                label="Download Filtered SKUs (Excel) ⬇️",
+                data=excel_data_sku,
+                file_name='filtered_sku_summary_with_all_reasons.xlsx',
+                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                help="Downloads the SKUs summary as an Excel file, including all aggregated reasons in separate columns."
             )
             
         with filter_down_col2:
-            csv_data_reason = convert_df_to_csv(reason_display_data)
+            # We will still keep the other downloads as CSV for simplicity
+            csv_data_reason = reason_display_data.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="Download Filtered Reasons (CSV) ⬇️",
                 data=csv_data_reason,
@@ -495,7 +501,7 @@ if uploaded_returns_files:
             )
             
         with filter_down_col3:
-            csv_data_platform = convert_df_to_csv(platform_display_data)
+            csv_data_platform = platform_display_data.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="Download Filtered Platforms (CSV) ⬇️",
                 data=csv_data_platform,
