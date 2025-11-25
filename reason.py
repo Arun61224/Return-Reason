@@ -3,16 +3,46 @@ import pandas as pd
 import numpy as np
 import zipfile
 import io
+# openpyxl is automatically used by pandas ExcelWriter
+# We use io.BytesIO to handle file in memory
 
-# --- Excel Utility (Simple Data Write - No Complex Formatting) ---
+# --- Excel Utility: Write with Table Formatting ---
 @st.cache_data
-def convert_df_to_excel_simple(df, sheet_name='SKU_Summary'):
+def convert_df_to_excel_formatted(df, sheet_name='SKU_Summary'):
     output = io.BytesIO()
-    # Use ExcelWriter with openpyxl engine (more reliable for simple data)
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        # Write the entire DataFrame to the sheet 
-        df.to_excel(writer, index=False, sheet_name=sheet_name)
     
+    # Use ExcelWriter with openpyxl engine
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        
+        # 1. Write the entire DataFrame to the sheet 
+        df.to_excel(writer, index=False, sheet_name=sheet_name)
+        
+        workbook = writer.book
+        worksheet = writer.sheets[sheet_name]
+        
+        # Get the dimensions of the dataframe
+        (max_row, max_col) = df.shape
+        
+        # 2. Add AutoFilter to the header row (A1 to the last column/row)
+        worksheet.auto_filter.ref = f"A1:{worksheet.cell(row=max_row + 1, column=max_col).coordinate}"
+        
+        # 3. Freeze the header row (A2 is the first cell below the header)
+        worksheet.freeze_panes = 'A2'
+        
+        # 4. Apply column width and check for Return % column to apply formatting
+        for i, col in enumerate(df.columns):
+            # Set default column width (e.g., 20)
+            worksheet.column_dimensions[chr(65 + i)].width = 20
+            
+            # Identify the Return % column for specific formatting
+            if col == 'Return % (Decimal)':
+                # Create a percentage format object
+                percent_format = workbook.add_format({'num_format': '0.00%'})
+                
+                # Apply the format to all cells in the column (from row 2 downwards)
+                col_letter = chr(65 + i)
+                worksheet.set_column(f'{col_letter}:{col_letter}', 20, percent_format)
+
     processed_data = output.getvalue()
     return processed_data
 # --- End Excel Utility ---
@@ -516,9 +546,10 @@ if uploaded_returns_files:
             
             # 1. Create the final Excel/CSV structure
             sku_final_export_csv_df = sku_final_export_data.drop(columns=['Return_Pct_Raw'], errors='ignore')
+            # Excel DataFrame: Keep only the Raw decimal value and drop the string format
             sku_final_export_excel_df = sku_final_export_data.drop(columns=['Return %'], errors='ignore')
             
-            # 2. Rename the RAW column for Excel
+            # 2. Rename the RAW column for Excel (This column will receive Excel percentage formatting)
             sku_final_export_excel_df.rename(columns={'Return_Pct_Raw': 'Return % (Decimal)'}, inplace=True)
             
             # 3. Define Final Export Order
@@ -533,7 +564,7 @@ if uploaded_returns_files:
             final_sku_excel_df = sku_final_export_excel_df.loc[:, final_export_excel_order]
             
             csv_help_text = f"Downloads the SKU summary including Total Orders, Return % (string), and Top {TOP_N_REASONS} Reasons."
-            excel_help_text = f"Downloads the SKU summary including Total Orders, Return % (as decimal for quick formatting in Excel), and Top {TOP_N_REASONS} Reasons."
+            excel_help_text = f"Downloads the SKU summary including Total Orders, Return % (Auto-formatted in Excel), and Top {TOP_N_REASONS} Reasons."
         else:
             # Sales data is NOT present. Only Returns Quantity and Reasons.
             core_cols = ['SKU', 'Total Quantity']
@@ -547,7 +578,8 @@ if uploaded_returns_files:
 
 
         sku_csv_data = final_sku_csv_df.to_csv(index=False).encode('utf-8')
-        excel_data_sku = convert_df_to_excel_simple(final_sku_excel_df) # Use the simple Excel writer
+        # *** THIS FUNCTION IS UPDATED FOR EXCEL FORMATTING (TABLE, FILTERS, PERCENTAGE) ***
+        excel_data_sku = convert_df_to_excel_formatted(final_sku_excel_df) 
 
 
         filter_down_col1, filter_down_col2, filter_down_col3, filter_down_col4 = st.columns(4)
@@ -565,7 +597,7 @@ if uploaded_returns_files:
             st.download_button(
                 label="Download Filtered SKUs (Excel) ⬇️",
                 data=excel_data_sku,
-                file_name='filtered_sku_summary_data.xlsx',
+                file_name='filtered_sku_summary_report.xlsx', # Changed file name for clarity
                 mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 help=excel_help_text
             )
