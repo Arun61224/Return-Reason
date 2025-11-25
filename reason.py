@@ -3,6 +3,9 @@ import pandas as pd
 import numpy as np
 import zipfile
 import io
+# xlsxwriter is needed for advanced Excel formatting like tables, 
+# and it is automatically used when engine='xlsxwriter' in pd.ExcelWriter. 
+# We don't need to import it explicitly unless we use its features directly.
 
 # 1. Column name mapping provided by you (Returns Data)
 COLUMN_MAPPING = {
@@ -213,14 +216,45 @@ def process_sales_data(sales_file):
         st.sidebar.error(f"Error processing Sales Data: {e}")
         return None
 
-# --- Helper function to convert DataFrame to Excel (for Download) ---
+# --- UPDATED: Helper function to convert DataFrame to Excel with Table Formatting ---
 @st.cache_data
 def convert_df_to_excel(df, sheet_name='SKU_Summary'):
     output = io.BytesIO()
+    
+    # Use ExcelWriter with xlsxwriter engine
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        # Write the DataFrame to the sheet
         df.to_excel(writer, index=False, sheet_name=sheet_name)
+        
+        workbook = writer.book
+        worksheet = writer.sheets[sheet_name]
+        
+        # Define the range for the table
+        max_row = len(df)
+        max_col = len(df.columns) - 1
+        
+        # Add an Excel Table with a built-in style (e.g., Medium 2 is a nice blue/green)
+        # We start the table at A1 (0, 0) and go down to the last row/column.
+        try:
+            worksheet.add_table(0, 0, max_row, max_col, {
+                'data': df.values.tolist(),  # Optional, but helps define the data
+                'columns': [{'header': col} for col in df.columns],
+                'style': 'TableStyleMedium2', # Blue/Green style (You can change this)
+                'autofilter': 1,
+                'name': 'ReturnAnalysisTable'
+            })
+        except Exception as e:
+            # Fallback in case table creation fails for some edge case (e.g., empty df)
+            print(f"Failed to add Excel table format: {e}")
+
+        # Auto-adjust column widths for better display (optional)
+        for i, col in enumerate(df.columns):
+            max_len = max(df[col].astype(str).str.len().max(), len(col)) + 2
+            worksheet.set_column(i, i, max_len)
+
     processed_data = output.getvalue()
     return processed_data
+# --- END UPDATED FUNCTION ---
 
 # --- Streamlit App UI ---
 st.set_page_config(layout="wide")
@@ -334,8 +368,6 @@ if uploaded_returns_files:
         top_reasons['New_Col_Name'] = 'Reason ' + top_reasons['Rank'].astype(int).astype(str)
         
         # Create a combined string for Reason and Count: "Reason Name (Count)"
-        # Note: We only add the count if it's greater than 1, as per standard practice, 
-        # but for simplicity and consistency with the request, we'll always include it.
         top_reasons['Reason_Count_Combined'] = top_reasons.apply(
             lambda row: f"{row['Final_Reason']} ({row['Final_Qty']})" if row['Final_Qty'] > 1 else f"{row['Final_Reason']}",
             axis=1
@@ -459,7 +491,7 @@ if uploaded_returns_files:
                     use_container_width=True, 
                     height=500
                 )
-                st.caption(f"Note: Top {TOP_N_REASONS} reasons (Reason 1, Reason 2, etc. with count) are included in the **Excel (.xlsx) download**.")
+                st.caption(f"Note: Top {TOP_N_REASONS} reasons (Reason 1, Reason 2, etc. with count) are included in the **Excel (.xlsx) download** with **Table formatting**.")
                 
             else:
                 # Agar Sales file upload nahi hui, toh sirf returns data dikhao
@@ -477,7 +509,7 @@ if uploaded_returns_files:
                     use_container_width=True, 
                     height=500
                 )
-                st.caption(f"Note: Top {TOP_N_REASONS} reasons (Reason 1, Reason 2, etc. with count) are included in the **Excel (.xlsx) download**.")
+                st.caption(f"Note: Top {TOP_N_REASONS} reasons (Reason 1, Reason 2, etc. with count) are included in the **Excel (.xlsx) download** with **Table formatting**.")
             
         with res2:
             st.caption("Filtered Reasons")
@@ -494,20 +526,20 @@ if uploaded_returns_files:
         # --- Download Filtered Aggregated Results ---
         st.divider()
         st.subheader("Download Filtered Aggregated Results")
-        st.caption("Downloads as an Excel file with Reason 1, Reason 2 columns (Comment + Count).")
+        st.caption("Downloads as an Excel file with Reason 1, Reason 2 columns, **formatted as an Excel Table**.")
         
         filter_down_col1, filter_down_col2, filter_down_col3, filter_down_col4 = st.columns(4)
         
         with filter_down_col1:
-            # Convert the complete export DataFrame to an Excel file
+            # Convert the complete export DataFrame to an Excel file with Table formatting
             excel_data_sku = convert_df_to_excel(sku_final_export_data)
             
             st.download_button(
-                label="Download Filtered SKUs (Excel) ⬇️",
+                label="Download Filtered SKUs (Excel Table) ⬇️",
                 data=excel_data_sku,
-                file_name='filtered_sku_summary_top10_reasons_with_count.xlsx',
+                file_name='filtered_sku_summary_top10_reasons_formatted.xlsx',
                 mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                help=f"Downloads the SKUs summary as an Excel file, including Reason 1, Reason 2... columns with the Reason Comment and its count."
+                help=f"Downloads the SKUs summary as an Excel file, formatted as a Table (Style: Medium 2)."
             )
             
         with filter_down_col2:
