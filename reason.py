@@ -316,15 +316,16 @@ if uploaded_returns_files:
         st.divider()
         st.subheader(f"Filtered Summary Tables (Total Items: {final_filtered_df['Final_Qty'].sum()})")
 
-        # --- REASON PIVOTING LOGIC (NEW) ---
+        # --- REASON PIVOTING LOGIC ---
+        TOP_N_REASONS = 5 
+        
         # 1. Group by SKU and Reason, summing the quantities
         reason_agg = final_filtered_df.groupby(['Final_SKU', 'Final_Reason'])['Final_Qty'].sum().reset_index()
         
         # 2. Rank reasons within each SKU based on quantity
         reason_agg['Rank'] = reason_agg.groupby('Final_SKU')['Final_Qty'].rank(method='first', ascending=False)
         
-        # Filter for top N reasons (e.g., Top 5)
-        TOP_N_REASONS = 5
+        # Filter for top N reasons (Top 5)
         top_reasons = reason_agg[reason_agg['Rank'] <= TOP_N_REASONS].copy()
         
         # Create column names: 'Reason 1 (Qty)', 'Reason 2 (Qty)', etc.
@@ -334,7 +335,6 @@ if uploaded_returns_files:
         top_reasons['Reason_Qty_Combined'] = top_reasons['Final_Reason'] + ' (' + top_reasons['Final_Qty'].astype(str) + ')'
         
         # Pivot the data to get reasons in separate columns
-        # Index: SKU, Columns: New_Col_Name (Reason 1, Reason 2...), Values: Reason_Qty_Combined
         sku_reasons_pivot = top_reasons.pivot(
             index='Final_SKU', 
             columns='New_Col_Name', 
@@ -342,17 +342,15 @@ if uploaded_returns_files:
         ).reset_index()
         sku_reasons_pivot.rename(columns={'Final_SKU': 'SKU'}, inplace=True)
         
-        # Fill NaN values with empty string for cleaner output
         sku_reasons_pivot = sku_reasons_pivot.fillna('')
         
-        # Ensure all Top N columns exist, even if empty for some SKUs
-        expected_cols = ['SKU'] + [f'Reason {i} (Qty)' for i in range(1, TOP_N_REASONS + 1)]
-        for col in expected_cols:
+        # Ensure all Top N columns exist, even if empty for some SKUs, and define the order
+        reason_cols_order = [f'Reason {i} (Qty)' for i in range(1, TOP_N_REASONS + 1)]
+        for col in reason_cols_order:
             if col not in sku_reasons_pivot.columns:
                 sku_reasons_pivot[col] = ''
                 
-        # Select only the expected columns and maintain order
-        sku_reasons_pivot = sku_reasons_pivot[expected_cols]
+        sku_reasons_pivot = sku_reasons_pivot[['SKU'] + reason_cols_order]
         # --- END REASON PIVOTING LOGIC ---
 
 
@@ -437,15 +435,15 @@ if uploaded_returns_files:
                 # Format the percentage column for display (00.00%)
                 sku_display_data['Return %'] = sku_display_data['Return_Pct_Raw'].apply(lambda x: f"{x:.2f}%")
                 
-                # --- MERGE PIVOTED REASONS DATA HERE ---
+                # --- MERGE PIVOTED REASONS DATA HERE (FOR EXPORT) ---
                 sku_display_data = pd.merge(
                     sku_display_data,
                     sku_reasons_pivot,
                     on='SKU',
                     how='left'
-                )
+                ).fillna('') # Fill NaN (where no reason data) with empty strings
                 
-                # Final column selection and reordering (keep only display columns for st.dataframe)
+                # --- FINAL DISPLAY DATA (ONLY CORE COLUMNS) ---
                 display_cols = ['SKU', 'Total Orders', 'Return Qty', 'Return %']
                 
                 # Display the data
@@ -454,24 +452,25 @@ if uploaded_returns_files:
                     use_container_width=True, 
                     height=500
                 )
-                st.caption(f"Note: Top {TOP_N_REASONS} Reasons are included in separate columns in the CSV download.")
+                st.caption(f"Note: Top {TOP_N_REASONS} Reasons are included in **separate columns** in the **CSV download** only.")
                 
             else:
                 # Agar Sales file upload nahi hui, toh sirf returns data dikhao
-                # Merge Reasons data for display if sales data is missing
+                # Merge Reasons data for export if sales data is missing
                 sku_display_data = pd.merge(
                     sku_display_data.rename(columns={'Return Qty': 'Total Quantity'}),
                     sku_reasons_pivot,
                     on='SKU',
                     how='left'
-                )
+                ).fillna('')
+                
                 display_cols = ['SKU', 'Total Quantity']
                 st.dataframe(
                     sku_display_data[display_cols], 
                     use_container_width=True, 
                     height=500
                 )
-                st.caption(f"Note: Top {TOP_N_REASONS} Reasons are included in separate columns in the CSV download.")
+                st.caption(f"Note: Top {TOP_N_REASONS} Reasons are included in **separate columns** in the **CSV download** only.")
             
         with res2:
             st.caption("Filtered Reasons")
@@ -488,7 +487,7 @@ if uploaded_returns_files:
         # --- Download Filtered Aggregated Results ---
         st.divider()
         st.subheader("Download Filtered Aggregated Results")
-        st.caption("Note: Downloaded SKUs will contain separate columns for Top 5 Reasons.")
+        st.caption("The downloaded SKUs CSV will include the hidden reason columns.")
         
         filter_down_col1, filter_down_col2, filter_down_col3, filter_down_col4 = st.columns(4)
         
@@ -500,7 +499,7 @@ if uploaded_returns_files:
                 data=csv_data_sku,
                 file_name='filtered_sku_summary_with_separate_reasons.csv',
                 mime='text/csv',
-                help="Downloads the visible Filtered SKUs table, including separate columns for Top 5 Reasons (Qty)."
+                help=f"Downloads the SKUs summary, including separate columns for Top {TOP_N_REASONS} Reasons (Qty)."
             )
             
         with filter_down_col2:
