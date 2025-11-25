@@ -217,7 +217,7 @@ def process_sales_data(sales_file):
 @st.cache_data
 def convert_df_to_excel(df, sheet_name='SKU_Summary'):
     output = io.BytesIO()
-    # Using 'xlsxwriter' engine for better formatting capabilities if needed later, but here just for standard save
+    # Using 'xlsxwriter' engine to save as a proper Excel file
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False, sheet_name=sheet_name)
     processed_data = output.getvalue()
@@ -319,23 +319,23 @@ if uploaded_returns_files:
         st.divider()
         st.subheader(f"Filtered Summary Tables (Total Items: {final_filtered_df['Final_Qty'].sum()})")
 
-        # --- REASON PIVOTING LOGIC (ALL REASONS IN SEPARATE COLUMNS) ---
+        # --- REASON PIVOTING LOGIC (ALL REASONS - ONLY QTY) ---
         # 1. Group by SKU and Reason, summing the quantities
         reason_agg = final_filtered_df.groupby(['Final_SKU', 'Final_Reason'])['Final_Qty'].sum().reset_index()
         
-        # 2. Create the column name dynamically: 'Reason: [Reason Name]'
-        reason_agg['New_Col_Name'] = 'Reason: ' + reason_agg['Final_Reason'].astype(str)
-        
-        # 3. Pivot the data: Index=SKU, Columns=Reason Name, Values=Quantity
+        # 2. Pivot the data: Index=SKU, Columns=Reason Name (Final_Reason), Values=Quantity (Final_Qty)
         sku_reasons_pivot = reason_agg.pivot(
             index='Final_SKU', 
-            columns='New_Col_Name', 
+            columns='Final_Reason', 
             values='Final_Qty'
         ).reset_index()
         sku_reasons_pivot.rename(columns={'Final_SKU': 'SKU'}, inplace=True)
         
-        # Fill NaN values with 0 for quantities
-        sku_reasons_pivot = sku_reasons_pivot.fillna(0).astype({col: int for col in sku_reasons_pivot.columns if col != 'SKU'})
+        # 3. Fill NaN values with 0 for quantities and ensure integer type
+        # The column names are now just the reason names, as requested.
+        reason_cols = [col for col in sku_reasons_pivot.columns if col != 'SKU']
+        sku_reasons_pivot = sku_reasons_pivot.fillna(0)
+        sku_reasons_pivot[reason_cols] = sku_reasons_pivot[reason_cols].astype(int)
         # --- END REASON PIVOTING LOGIC ---
 
 
@@ -421,15 +421,15 @@ if uploaded_returns_files:
                 sku_display_data['Return %'] = sku_display_data['Return_Pct_Raw'].apply(lambda x: f"{x:.2f}%")
                 
                 # --- MERGE ALL REASONS PIVOT DATA HERE (FOR EXCEL EXPORT) ---
+                # This dataframe (sku_final_export_data) will have SKU, Order/Return Metrics, AND all Reasons columns
                 sku_final_export_data = pd.merge(
                     sku_display_data,
                     sku_reasons_pivot,
                     on='SKU',
                     how='left'
-                ).fillna(0) # Fill NaN in reason columns with 0
+                ).fillna(0)
                 
                 # --- FINAL DISPLAY DATA (ONLY CORE COLUMNS) ---
-                # This ensures only the core columns are shown in st.dataframe
                 display_cols = ['SKU', 'Total Orders', 'Return Qty', 'Return %']
                 
                 # Display the data
@@ -438,7 +438,7 @@ if uploaded_returns_files:
                     use_container_width=True, 
                     height=500
                 )
-                st.caption("Note: All reasons are included in separate columns in the **Excel (.xlsx) download**.")
+                st.caption("Note: All reasons (only Qty) are included in separate columns in the **Excel (.xlsx) download**.")
                 
             else:
                 # Agar Sales file upload nahi hui, toh sirf returns data dikhao
@@ -456,7 +456,7 @@ if uploaded_returns_files:
                     use_container_width=True, 
                     height=500
                 )
-                st.caption("Note: All reasons are included in separate columns in the **Excel (.xlsx) download**.")
+                st.caption("Note: All reasons (only Qty) are included in separate columns in the **Excel (.xlsx) download**.")
             
         with res2:
             st.caption("Filtered Reasons")
@@ -473,7 +473,7 @@ if uploaded_returns_files:
         # --- Download Filtered Aggregated Results ---
         st.divider()
         st.subheader("Download Filtered Aggregated Results")
-        st.caption("Downloads as an Excel file with all reasons in separate columns.")
+        st.caption("Downloads as an Excel file with all reasons (quantity only) in separate columns.")
         
         filter_down_col1, filter_down_col2, filter_down_col3, filter_down_col4 = st.columns(4)
         
@@ -486,7 +486,7 @@ if uploaded_returns_files:
                 data=excel_data_sku,
                 file_name='filtered_sku_summary_with_all_reasons.xlsx',
                 mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                help="Downloads the SKUs summary as an Excel file, including all aggregated reasons in separate columns."
+                help="Downloads the SKUs summary as an Excel file, including all reasons (quantity only) in separate columns."
             )
             
         with filter_down_col2:
