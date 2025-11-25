@@ -385,7 +385,7 @@ if uploaded_returns_files:
                 st.error("Minimum % value cannot be greater than Maximum % value.")
                 min_pct, max_pct = 0.0, 100.0 
                 
-            st.caption("Filtered SKUs (Return vs. Orders)")
+            st.caption("Filtered SKUs (Return vs. Orders / Top Reasons)")
             
             sku_display_data = final_filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
             sku_display_data.columns = ['SKU', 'Return Qty'] 
@@ -432,24 +432,48 @@ if uploaded_returns_files:
                 # Format the percentage column for display (00.00%) - This is only for the Streamlit table
                 sku_display_data['Return %'] = sku_display_data['Return_Pct_Raw'].apply(lambda x: f"{x * 100:.2f}%")
                 
-                # --- FINAL DISPLAY DATA (Web View) ---
+                # --- MERGE PIVOTED REASONS DATA FOR EXPORT/DISPLAY ---
+                sku_final_display_data = pd.merge(
+                    sku_display_data, 
+                    sku_reasons_pivot,
+                    on='SKU', 
+                    how='left'
+                ).fillna('')
+
+                # --- FINAL DISPLAY DATA (Web View with Return %) ---
+                # Drop the raw percentage column
+                sku_final_display_data.drop(columns=['Return_Pct_Raw'], inplace=True, errors='ignore') 
+                
                 display_cols = ['SKU', 'Total Orders', 'Return Qty', 'Return %']
                 
-                # Display the data
                 st.dataframe(
-                    sku_display_data[display_cols], 
+                    sku_final_display_data[display_cols], # Showing only the core columns for a clean view
                     use_container_width=True, 
                     height=500
                 )
+                st.caption(f"Note: CSV download includes **Total Orders**, **Return %**, and **Top {TOP_N_REASONS} Reasons**.")
                 
             else:
-                # Agar Sales file upload nahi hui, toh sirf returns data dikhao
-                display_cols = ['SKU', 'Return Qty']
+                # Agar Sales file upload nahi hui, toh SKUs ke saath TOP REASONS dikhao
+                
+                # Merge All Reasons data for display/export
+                sku_final_display_data = pd.merge(
+                    sku_display_data.rename(columns={'Return Qty': 'Total Quantity'}),
+                    sku_reasons_pivot,
+                    on='SKU',
+                    how='left'
+                ).fillna('')
+                
+                # --- FINAL DISPLAY DATA (Web View with Top Reasons) ---
+                display_cols = ['SKU', 'Total Quantity'] + [f'Reason {i}' for i in range(1, 3)] # Only show top 2 reasons for clean table
+                
                 st.dataframe(
-                    sku_display_data[display_cols], 
+                    sku_final_display_data[display_cols], 
                     use_container_width=True, 
                     height=500
                 )
+                st.caption(f"Note: CSV download includes **Total Quantity** and **Top {TOP_N_REASONS} Reasons**.")
+
             
         with res2:
             st.caption("Filtered Reasons")
@@ -467,8 +491,37 @@ if uploaded_returns_files:
         st.divider()
         st.subheader("Download Filtered Aggregated Results")
         
-        # --- SKUs CSV Download (Only SKUs and Return Qty - Simple) ---
-        sku_csv_data = sku_display_data.to_csv(index=False).encode('utf-8')
+        # --- SKU Summary CSV Download (Now includes Reasons/Return %) ---
+        
+        # Prepare the final export dataframe (this is the sku_final_display_data from the if/else block above)
+        # We need to make sure the Return % column is exported correctly for CSV.
+        
+        # 1. Check if the 'Return %' column (the string-formatted one) exists
+        if 'Return %' in sku_final_display_data.columns:
+            # We need to drop the redundant percentage columns from the merge if they exist
+            # The percentage column we want to export is the string formatted one (e.g. 15.50%)
+            sku_export_cols = [col for col in sku_final_display_data.columns if col not in ['Return_Pct_Raw']]
+            final_sku_csv_df = sku_final_display_data[sku_export_cols].copy()
+        else:
+            # If sales data was not uploaded, the dataframe is already clean
+            final_sku_csv_df = sku_final_display_data.copy()
+            
+        # Order columns for CSV download
+        cols = final_sku_csv_df.columns.tolist()
+        reason_cols = [col for col in cols if col.startswith('Reason ')]
+        
+        # Determine core columns based on whether sales data was present
+        if 'Total Orders' in final_sku_csv_df.columns:
+            core_cols = ['SKU', 'Total Orders', 'Return Qty', 'Return %']
+        else:
+            core_cols = ['SKU', 'Total Quantity']
+            
+        final_export_order = core_cols + reason_cols
+        
+        # Reorder the final dataframe
+        final_sku_csv_df = final_sku_csv_df.loc[:, final_export_order]
+        
+        sku_csv_data = final_sku_csv_df.to_csv(index=False).encode('utf-8')
         
         filter_down_col1, filter_down_col2, filter_down_col3, filter_down_col4 = st.columns(4)
         
@@ -476,9 +529,9 @@ if uploaded_returns_files:
             st.download_button(
                 label="Download Filtered SKUs (CSV) ⬇️",
                 data=sku_csv_data,
-                file_name='filtered_sku_summary.csv',
+                file_name='filtered_sku_summary_with_reasons.csv',
                 mime='text/csv',
-                help="Downloads the visible Filtered SKUs data as a CSV file."
+                help=f"Downloads the SKU summary including {'Total Orders, Return %' if 'Total Orders' in final_sku_csv_df.columns else 'Total Quantity'} and Top {TOP_N_REASONS} Reasons."
             )
             
         with filter_down_col2:
