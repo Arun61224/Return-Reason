@@ -221,7 +221,6 @@ def convert_df_to_excel(df, sheet_name='SKU_Summary'):
     # Use ExcelWriter with xlsxwriter engine
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         # Write the DataFrame to the sheet
-        # NOTE: We DO NOT write the headers here, as we manually add them using add_table below.
         df.to_excel(writer, index=False, sheet_name=sheet_name)
         
         workbook = writer.book
@@ -234,7 +233,7 @@ def convert_df_to_excel(df, sheet_name='SKU_Summary'):
         # Add an Excel Table with a built-in style
         try:
             worksheet.add_table(0, 0, max_row, max_col, {
-                'data': df.values.tolist(),  # Optional, but helps define the data
+                'data': df.values.tolist(),  
                 'columns': [{'header': col} for col in df.columns],
                 'style': 'TableStyleMedium2', # Blue/Green style 
                 'autofilter': 1,
@@ -324,7 +323,7 @@ if uploaded_returns_files:
                 key="reason_search"
             )
         with col3:
-            platform_search_list = st.multiselect(
+            platform_search_list = st.multiseelect(
                 "Filter by Platform:", 
                 options=platform_list_multiselect,
                 default=[], 
@@ -469,6 +468,7 @@ if uploaded_returns_files:
                 # --- END APPLYING FILTER ---
                 
                 # Format the percentage column for display (00.00%)
+                # This column is now needed in the final export data!
                 sku_display_data['Return %'] = sku_display_data['Return_Pct_Raw'].apply(lambda x: f"{x:.2f}%")
                 
                 # --- MERGE PIVOTED REASONS DATA HERE (FOR EXCEL EXPORT) ---
@@ -480,28 +480,26 @@ if uploaded_returns_files:
                 ).fillna('') 
                 
                 # --- APPLY FINAL EXPORT DATA TRANSFORMATIONS ---
-                # 1. Delete the 'Return %' column (Column D in the excel export)
-                sku_final_export_data.drop(columns=['Return %', 'Return_Pct_Raw'], inplace=True, errors='ignore')
-
-                # 2. Change Column Order: Total Orders should be before Return Qty
-                # Get the list of all columns
+                # **NOTE: We keep the 'Return %' column now**
+                
+                # 1. Change Column Order: SKU | Total Orders | Return Qty | Return % | Reason 1...
                 cols = sku_final_export_data.columns.tolist()
                 
-                # Define the desired order for the first few columns
-                desired_core_order = ['SKU', 'Total Orders', 'Return Qty']
+                # Define the desired order for the core columns
+                desired_core_order = ['SKU', 'Total Orders', 'Return Qty', 'Return %']
                 
                 # Find the Reason columns
                 reason_cols = [col for col in cols if col.startswith('Reason ')]
                 
-                # Construct the final column order: SKU, Total Orders, Return Qty, Reason 1... Reason 10
+                # Construct the final column order
                 final_export_order = desired_core_order + reason_cols
                 
                 # Apply the order
-                sku_final_export_data = sku_final_export_data[final_export_order]
+                # Use .loc to select columns and ensure a clean DataFrame for export
+                sku_final_export_data = sku_final_export_data.loc[:, final_export_order]
                 
                 
-                # --- FINAL DISPLAY DATA (ONLY CORE COLUMNS) ---
-                # We show the original display data with Return % for web view
+                # --- FINAL DISPLAY DATA (Web View) ---
                 display_cols = ['SKU', 'Total Orders', 'Return Qty', 'Return %']
                 
                 # Display the data
@@ -510,7 +508,7 @@ if uploaded_returns_files:
                     use_container_width=True, 
                     height=500
                 )
-                st.caption(f"Note: The Excel download will contain: **SKU, Total Orders, Return Qty**, and **Top {TOP_N_REASONS} Reasons** (formatted as an Excel Table). **Return % column is excluded** from the download.")
+                st.caption(f"Note: The Excel download will contain: **SKU, Total Orders, Return Qty, Return %**, and **Top {TOP_N_REASONS} Reasons** (formatted as an Excel Table).")
                 
             else:
                 # Agar Sales file upload nahi hui, toh sirf returns data dikhao
@@ -551,7 +549,7 @@ if uploaded_returns_files:
         # --- Download Filtered Aggregated Results ---
         st.divider()
         st.subheader("Download Filtered Aggregated Results")
-        st.caption("Downloads as an Excel file with **SKU | Total Orders | Return Qty | Reason 1...** columns, formatted as an Excel Table.")
+        st.caption("Downloads as an Excel file with **SKU | Total Orders | Return Qty | Return % | Reason 1...** columns, formatted as an Excel Table.")
         
         filter_down_col1, filter_down_col2, filter_down_col3, filter_down_col4 = st.columns(4)
         
