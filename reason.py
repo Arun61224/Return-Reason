@@ -3,9 +3,6 @@ import pandas as pd
 import numpy as np
 import zipfile
 import io
-# xlsxwriter is needed for advanced Excel formatting like tables, 
-# and it is automatically used when engine='xlsxwriter' in pd.ExcelWriter. 
-# We don't need to import it explicitly unless we use its features directly.
 
 # 1. Column name mapping provided by you (Returns Data)
 COLUMN_MAPPING = {
@@ -224,6 +221,7 @@ def convert_df_to_excel(df, sheet_name='SKU_Summary'):
     # Use ExcelWriter with xlsxwriter engine
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         # Write the DataFrame to the sheet
+        # NOTE: We DO NOT write the headers here, as we manually add them using add_table below.
         df.to_excel(writer, index=False, sheet_name=sheet_name)
         
         workbook = writer.book
@@ -233,22 +231,21 @@ def convert_df_to_excel(df, sheet_name='SKU_Summary'):
         max_row = len(df)
         max_col = len(df.columns) - 1
         
-        # Add an Excel Table with a built-in style (e.g., Medium 2 is a nice blue/green)
-        # We start the table at A1 (0, 0) and go down to the last row/column.
+        # Add an Excel Table with a built-in style
         try:
             worksheet.add_table(0, 0, max_row, max_col, {
                 'data': df.values.tolist(),  # Optional, but helps define the data
                 'columns': [{'header': col} for col in df.columns],
-                'style': 'TableStyleMedium2', # Blue/Green style (You can change this)
+                'style': 'TableStyleMedium2', # Blue/Green style 
                 'autofilter': 1,
                 'name': 'ReturnAnalysisTable'
             })
         except Exception as e:
-            # Fallback in case table creation fails for some edge case (e.g., empty df)
             print(f"Failed to add Excel table format: {e}")
 
         # Auto-adjust column widths for better display (optional)
         for i, col in enumerate(df.columns):
+            # Adjust max length calculation for the reason columns which can be long
             max_len = max(df[col].astype(str).str.len().max(), len(col)) + 2
             worksheet.set_column(i, i, max_len)
 
@@ -482,7 +479,29 @@ if uploaded_returns_files:
                     how='left'
                 ).fillna('') 
                 
+                # --- APPLY FINAL EXPORT DATA TRANSFORMATIONS ---
+                # 1. Delete the 'Return %' column (Column D in the excel export)
+                sku_final_export_data.drop(columns=['Return %', 'Return_Pct_Raw'], inplace=True, errors='ignore')
+
+                # 2. Change Column Order: Total Orders should be before Return Qty
+                # Get the list of all columns
+                cols = sku_final_export_data.columns.tolist()
+                
+                # Define the desired order for the first few columns
+                desired_core_order = ['SKU', 'Total Orders', 'Return Qty']
+                
+                # Find the Reason columns
+                reason_cols = [col for col in cols if col.startswith('Reason ')]
+                
+                # Construct the final column order: SKU, Total Orders, Return Qty, Reason 1... Reason 10
+                final_export_order = desired_core_order + reason_cols
+                
+                # Apply the order
+                sku_final_export_data = sku_final_export_data[final_export_order]
+                
+                
                 # --- FINAL DISPLAY DATA (ONLY CORE COLUMNS) ---
+                # We show the original display data with Return % for web view
                 display_cols = ['SKU', 'Total Orders', 'Return Qty', 'Return %']
                 
                 # Display the data
@@ -491,7 +510,7 @@ if uploaded_returns_files:
                     use_container_width=True, 
                     height=500
                 )
-                st.caption(f"Note: Top {TOP_N_REASONS} reasons (Reason 1, Reason 2, etc. with count) are included in the **Excel (.xlsx) download** with **Table formatting**.")
+                st.caption(f"Note: The Excel download will contain: **SKU, Total Orders, Return Qty**, and **Top {TOP_N_REASONS} Reasons** (formatted as an Excel Table). **Return % column is excluded** from the download.")
                 
             else:
                 # Agar Sales file upload nahi hui, toh sirf returns data dikhao
@@ -503,13 +522,19 @@ if uploaded_returns_files:
                     how='left'
                 ).fillna('')
                 
+                # --- APPLY FINAL EXPORT DATA TRANSFORMATIONS (SKU, Total Quantity, Reason 1...) ---
+                cols = sku_final_export_data.columns.tolist()
+                reason_cols = [col for col in cols if col.startswith('Reason ')]
+                final_export_order = ['SKU', 'Total Quantity'] + reason_cols
+                sku_final_export_data = sku_final_export_data[final_export_order]
+                
                 display_cols = ['SKU', 'Total Quantity']
                 st.dataframe(
                     sku_display_data[display_cols], 
                     use_container_width=True, 
                     height=500
                 )
-                st.caption(f"Note: Top {TOP_N_REASONS} reasons (Reason 1, Reason 2, etc. with count) are included in the **Excel (.xlsx) download** with **Table formatting**.")
+                st.caption(f"Note: The Excel download will contain: **SKU, Total Quantity**, and **Top {TOP_N_REASONS} Reasons** (formatted as an Excel Table).")
             
         with res2:
             st.caption("Filtered Reasons")
@@ -526,7 +551,7 @@ if uploaded_returns_files:
         # --- Download Filtered Aggregated Results ---
         st.divider()
         st.subheader("Download Filtered Aggregated Results")
-        st.caption("Downloads as an Excel file with Reason 1, Reason 2 columns, **formatted as an Excel Table**.")
+        st.caption("Downloads as an Excel file with **SKU | Total Orders | Return Qty | Reason 1...** columns, formatted as an Excel Table.")
         
         filter_down_col1, filter_down_col2, filter_down_col3, filter_down_col4 = st.columns(4)
         
@@ -537,13 +562,12 @@ if uploaded_returns_files:
             st.download_button(
                 label="Download Filtered SKUs (Excel Table) ⬇️",
                 data=excel_data_sku,
-                file_name='filtered_sku_summary_top10_reasons_formatted.xlsx',
+                file_name='final_sku_returns_report_formatted.xlsx',
                 mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                help=f"Downloads the SKUs summary as an Excel file, formatted as a Table (Style: Medium 2)."
+                help=f"Downloads the final SKU summary as an Excel file, formatted as a Table (Style: Medium 2)."
             )
             
         with filter_down_col2:
-            # We will still keep the other downloads as CSV for simplicity
             csv_data_reason = reason_display_data.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="Download Filtered Reasons (CSV) ⬇️",
