@@ -225,10 +225,19 @@ def convert_df_to_excel(df, sheet_name='SKU_Summary'):
         
         workbook = writer.book
         worksheet = writer.sheets[sheet_name]
+
+        # Define the Excel format for percentage (two decimal places)
+        percent_format = workbook.add_format({'num_format': '0.00%'})
         
         # Define the range for the table
         max_row = len(df)
         max_col = len(df.columns) - 1
+        
+        # Get column index for 'Return %' (0-indexed)
+        try:
+            percent_col_index = df.columns.get_loc('Return %')
+        except KeyError:
+            percent_col_index = -1
         
         # Add an Excel Table with a built-in style
         try:
@@ -242,9 +251,13 @@ def convert_df_to_excel(df, sheet_name='SKU_Summary'):
         except Exception as e:
             print(f"Failed to add Excel table format: {e}")
 
+        # Apply the percentage format to the entire column if found
+        if percent_col_index != -1:
+            # +1 since Excel is 1-indexed, and we format rows 1 to max_row (data rows)
+            worksheet.set_column(percent_col_index, percent_col_index, 10, percent_format)
+
         # Auto-adjust column widths for better display (optional)
         for i, col in enumerate(df.columns):
-            # Adjust max length calculation for the reason columns which can be long
             max_len = max(df[col].astype(str).str.len().max(), len(col)) + 2
             worksheet.set_column(i, i, max_len)
 
@@ -323,7 +336,7 @@ if uploaded_returns_files:
                 key="reason_search"
             )
         with col3:
-            platform_search_list = st.multiseelect(
+            platform_search_list = st.multiselect(
                 "Filter by Platform:", 
                 options=platform_list_multiselect,
                 default=[], 
@@ -456,20 +469,20 @@ if uploaded_returns_files:
                 # Calculate return percentage as a raw float for filtering
                 sku_display_data['Return_Pct_Raw'] = np.where(
                     sku_display_data['Total Orders'] > 0,
-                    (sku_display_data['Return Qty'] / sku_display_data['Total Orders']) * 100,
+                    (sku_display_data['Return Qty'] / sku_display_data['Total Orders']), # Divide by 100 later in Excel
                     0.0
                 )
                 
                 # --- APPLYING THE MANUAL RETURN PERCENTAGE FILTER ---
+                # NOTE: We filter on the RAW percentage (multiplied by 100)
                 sku_display_data = sku_display_data[
-                    (sku_display_data['Return_Pct_Raw'] >= min_pct) & 
-                    (sku_display_data['Return_Pct_Raw'] <= max_pct)
+                    (sku_display_data['Return_Pct_Raw'] * 100 >= min_pct) & 
+                    (sku_display_data['Return_Pct_Raw'] * 100 <= max_pct)
                 ]
                 # --- END APPLYING FILTER ---
                 
-                # Format the percentage column for display (00.00%)
-                # This column is now needed in the final export data!
-                sku_display_data['Return %'] = sku_display_data['Return_Pct_Raw'].apply(lambda x: f"{x:.2f}%")
+                # Format the percentage column for display (00.00%) - This is only for the Streamlit table
+                sku_display_data['Return %'] = sku_display_data['Return_Pct_Raw'].apply(lambda x: f"{x * 100:.2f}%")
                 
                 # --- MERGE PIVOTED REASONS DATA HERE (FOR EXCEL EXPORT) ---
                 sku_final_export_data = pd.merge(
@@ -479,9 +492,13 @@ if uploaded_returns_files:
                     how='left'
                 ).fillna('') 
                 
-                # --- APPLY FINAL EXPORT DATA TRANSFORMATIONS ---
-                # **NOTE: We keep the 'Return %' column now**
+                # **IMPORTANT:** Rename 'Return_Pct_Raw' to 'Return %' for the export dataframe
+                sku_final_export_data.rename(columns={'Return_Pct_Raw': 'Return %'}, inplace=True)
                 
+                # Delete the string formatted Return % column
+                sku_final_export_data.drop(columns=['Return %_y'], inplace=True, errors='ignore')
+                
+                # --- APPLY FINAL EXPORT DATA TRANSFORMATIONS ---
                 # 1. Change Column Order: SKU | Total Orders | Return Qty | Return % | Reason 1...
                 cols = sku_final_export_data.columns.tolist()
                 
@@ -495,7 +512,6 @@ if uploaded_returns_files:
                 final_export_order = desired_core_order + reason_cols
                 
                 # Apply the order
-                # Use .loc to select columns and ensure a clean DataFrame for export
                 sku_final_export_data = sku_final_export_data.loc[:, final_export_order]
                 
                 
@@ -508,7 +524,7 @@ if uploaded_returns_files:
                     use_container_width=True, 
                     height=500
                 )
-                st.caption(f"Note: The Excel download will contain: **SKU, Total Orders, Return Qty, Return %**, and **Top {TOP_N_REASONS} Reasons** (formatted as an Excel Table).")
+                st.caption(f"Note: The Excel download contains: **SKU, Total Orders, Return Qty**, and **Return %** (formatted correctly as a percentage in Excel Table).")
                 
             else:
                 # Agar Sales file upload nahi hui, toh sirf returns data dikhao
