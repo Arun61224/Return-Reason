@@ -3,44 +3,42 @@ import pandas as pd
 import numpy as np
 import zipfile
 import io
-import xlsxwriter # Ensure this is installed!
+import xlsxwriter # <-- ENSURE THIS IS INSTALLED
 
-# --- Excel Utility: Write with Table Formatting (FINAL TABLE OBJECT VERSION) ---
+# --- Excel Utility: Write with Table Formatting (FINAL, CORRECTED TABLE OBJECT VERSION) ---
+# This version fixes the "more columns than 'data' passed" error.
 @st.cache_data
 def convert_df_to_excel_formatted(df, sheet_name='SKU_Summary'):
     output = io.BytesIO()
     
-    # ⚠️ CRITICAL CHANGE: Using 'xlsxwriter' engine to easily create Table Objects
+    # Using 'xlsxwriter' engine
     try:
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             
-            # 1. Write the entire DataFrame to the sheet 
-            # We skip index=False here as we will use add_table to define the structure
+            # 1. Write the entire DataFrame (Headers and Data)
             df.to_excel(writer, index=False, sheet_name=sheet_name)
             
             # Get the xlsxwriter objects
             workbook = writer.book
             worksheet = writer.sheets[sheet_name]
             
-            # Get the dimensions of the dataframe
-            # max_row is data rows + 1 (header)
+            # Get the dimensions of the dataframe (max_row is data rows + 1 (header))
             (max_row, max_col) = df.shape 
             
             # 2. Add a Table Object for Borders/Shading/Filters
+            # We omit the 'data' parameter to avoid conflicts and define the range properly.
             # Range is from (Row 0, Col 0) to (Last Data Row, Last Col - 1)
-            # This automatically adds filters and proper table styling (borders, shading).
             worksheet.add_table(0, 0, max_row, max_col - 1, {
-                'data': df.values.tolist(), # Passes data again to ensure table definition is perfect
+                # We define columns so headers are properly recognized
                 'columns': [{'header': col} for col in df.columns],
-                'style': 'Table Style Medium 9' # Apply a default Excel Table Style (blue/white)
+                'style': 'Table Style Medium 9' # Apply a default Excel Table Style (Borders + Shading)
             })
             
-            # 3. Add Freeze Panes (xlsxwriter uses row/col index)
-            worksheet.freeze_panes(1, 0) # Freeze row 1 (the header)
+            # 3. Add Freeze Panes (Freeze row 1 - the header)
+            worksheet.freeze_panes(1, 0)
 
-            # 4. Apply column width and check for Return % column
+            # 4. Apply column width and Percentage Format
             for i, col in enumerate(df.columns):
-                
                 # Set column width 
                 worksheet.set_column(i, i, 20)
                 
@@ -48,11 +46,11 @@ def convert_df_to_excel_formatted(df, sheet_name='SKU_Summary'):
                 if col == 'Return % (Decimal)':
                     percent_format = workbook.add_format({'num_format': '0.00%'})
                     # Apply format to the column (excluding header)
-                    worksheet.set_column(i, i, 20, 20, percent_format) # The 20, 20 are width and hidden args (ignored here)
+                    worksheet.set_column(i, i, 20, percent_format)
 
     except Exception as e:
-        # Fallback to simple openpyxl writing if xlsxwriter fails
-        st.error(f"Table formatting failed with xlsxwriter ({e}). Falling back to simple Excel. Did you run 'pip install xlsxwriter'?")
+        # Fallback to simple writing if xlsxwriter fails
+        st.error(f"Excel formatting failed. Please ensure 'xlsxwriter' is installed.")
         output = io.BytesIO()
         df.to_excel(output, index=False, sheet_name=sheet_name, engine='openpyxl')
         output.seek(0)
