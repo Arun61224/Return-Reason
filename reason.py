@@ -3,10 +3,9 @@ import pandas as pd
 import numpy as np
 import zipfile
 import io
-# openpyxl is automatically used by pandas ExcelWriter
-# We use io.BytesIO to handle file in memory
 
-# --- Excel Utility: Write with Table Formatting ---
+# --- Excel Utility: Write with Table Formatting (FINAL FIXED VERSION) ---
+# openpyxl engine is preferred for Streamlit as it's more robust with Pandas
 @st.cache_data
 def convert_df_to_excel_formatted(df, sheet_name='SKU_Summary'):
     output = io.BytesIO()
@@ -17,6 +16,9 @@ def convert_df_to_excel_formatted(df, sheet_name='SKU_Summary'):
         # 1. Write the entire DataFrame to the sheet 
         df.to_excel(writer, index=False, sheet_name=sheet_name)
         
+        # Get the openpyxl objects
+        # Note: If openpyxl is not installed, Streamlit will typically handle it, 
+        # but the environment should have it for this function to work fully.
         workbook = writer.book
         worksheet = writer.sheets[sheet_name]
         
@@ -24,6 +26,7 @@ def convert_df_to_excel_formatted(df, sheet_name='SKU_Summary'):
         (max_row, max_col) = df.shape
         
         # 2. Add AutoFilter to the header row (A1 to the last column/row)
+        # Note: Added +1 to max_row for correct range reference if data is present
         worksheet.auto_filter.ref = f"A1:{worksheet.cell(row=max_row + 1, column=max_col).coordinate}"
         
         # 3. Freeze the header row (A2 is the first cell below the header)
@@ -31,17 +34,19 @@ def convert_df_to_excel_formatted(df, sheet_name='SKU_Summary'):
         
         # 4. Apply column width and check for Return % column to apply formatting
         for i, col in enumerate(df.columns):
+            col_letter = chr(65 + i) # A=65, B=66, etc.
+
             # Set default column width (e.g., 20)
-            worksheet.column_dimensions[chr(65 + i)].width = 20
+            worksheet.column_dimensions[col_letter].width = 20
             
-            # Identify the Return % column for specific formatting
+            # FIX: OPENPYXL SPECIFIC FORMATTING
             if col == 'Return % (Decimal)':
-                # Create a percentage format object
-                percent_format = workbook.add_format({'num_format': '0.00%'})
-                
-                # Apply the format to all cells in the column (from row 2 downwards)
-                col_letter = chr(65 + i)
-                worksheet.set_column(f'{col_letter}:{col_letter}', 20, percent_format)
+                # Apply the number format directly to cells (starting from row 2)
+                for row_num in range(2, max_row + 2):
+                    cell = worksheet[f'{col_letter}{row_num}']
+                    # Use '0.00%' format to show decimal as percentage
+                    cell.number_format = '0.00%' 
+                    
 
     processed_data = output.getvalue()
     return processed_data
@@ -578,7 +583,7 @@ if uploaded_returns_files:
 
 
         sku_csv_data = final_sku_csv_df.to_csv(index=False).encode('utf-8')
-        # *** THIS FUNCTION IS UPDATED FOR EXCEL FORMATTING (TABLE, FILTERS, PERCENTAGE) ***
+        # *** THIS FUNCTION IS THE FIXED ONE FOR EXCEL FORMATTING ***
         excel_data_sku = convert_df_to_excel_formatted(final_sku_excel_df) 
 
 
@@ -597,7 +602,7 @@ if uploaded_returns_files:
             st.download_button(
                 label="Download Filtered SKUs (Excel) ⬇️",
                 data=excel_data_sku,
-                file_name='filtered_sku_summary_report.xlsx', # Changed file name for clarity
+                file_name='filtered_sku_summary_report.xlsx',
                 mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 help=excel_help_text
             )
