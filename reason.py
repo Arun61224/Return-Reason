@@ -217,7 +217,7 @@ def process_sales_data(sales_file):
 # --- Helper function to convert DataFrame to CSV for download ---
 @st.cache_data
 def convert_df_to_csv(df):
-    # index=False ensures the index column (A column) is not written to the CSV file
+    # This line ensures that the DataFrame index is NOT included in the CSV file (removes the "A" column)
     return df.to_csv(index=False).encode('utf-8')
 
 # --- Streamlit App UI ---
@@ -316,42 +316,22 @@ if uploaded_returns_files:
         st.divider()
         st.subheader(f"Filtered Summary Tables (Total Items: {final_filtered_df['Final_Qty'].sum()})")
 
-        # --- REASON PIVOTING LOGIC ---
-        TOP_N_REASONS = 5 
-        
+        # --- REASON AGGREGATION LOGIC (All Reasons in one column) ---
         # 1. Group by SKU and Reason, summing the quantities
         reason_agg = final_filtered_df.groupby(['Final_SKU', 'Final_Reason'])['Final_Qty'].sum().reset_index()
         
-        # 2. Rank reasons within each SKU based on quantity
-        reason_agg['Rank'] = reason_agg.groupby('Final_SKU')['Final_Qty'].rank(method='first', ascending=False)
+        # 2. Format the output string: "Reason (Count)"
+        reason_agg['Formatted_Reason'] = reason_agg.apply(
+            lambda row: f"{row['Final_Reason']} ({row['Final_Qty']})", axis=1
+        )
         
-        # Filter for top N reasons (Top 5)
-        top_reasons = reason_agg[reason_agg['Rank'] <= TOP_N_REASONS].copy()
-        
-        # Create column names: 'Reason 1 (Qty)', 'Reason 2 (Qty)', etc.
-        top_reasons['New_Col_Name'] = 'Reason ' + top_reasons['Rank'].astype(int).astype(str) + ' (Qty)'
-        
-        # Create a combined string for Reason and Quantity: "Reason Name (Qty)"
-        top_reasons['Reason_Qty_Combined'] = top_reasons['Final_Reason'] + ' (' + top_reasons['Final_Qty'].astype(str) + ')'
-        
-        # Pivot the data to get reasons in separate columns
-        sku_reasons_pivot = top_reasons.pivot(
-            index='Final_SKU', 
-            columns='New_Col_Name', 
-            values='Reason_Qty_Combined'
+        # 3. Concatenate all formatted reasons for each SKU, separated by ' | '
+        # This will put ALL reasons for an SKU into a single cell in the 'All Reasons (Count)' column
+        sku_all_reasons = reason_agg.groupby('Final_SKU')['Formatted_Reason'].apply(
+            lambda x: ' | '.join(x)
         ).reset_index()
-        sku_reasons_pivot.rename(columns={'Final_SKU': 'SKU'}, inplace=True)
-        
-        sku_reasons_pivot = sku_reasons_pivot.fillna('')
-        
-        # Ensure all Top N columns exist, even if empty for some SKUs, and define the order
-        reason_cols_order = [f'Reason {i} (Qty)' for i in range(1, TOP_N_REASONS + 1)]
-        for col in reason_cols_order:
-            if col not in sku_reasons_pivot.columns:
-                sku_reasons_pivot[col] = ''
-                
-        sku_reasons_pivot = sku_reasons_pivot[['SKU'] + reason_cols_order]
-        # --- END REASON PIVOTING LOGIC ---
+        sku_all_reasons.columns = ['SKU', 'All Reasons (Count)']
+        # --- END REASON AGGREGATION LOGIC ---
 
 
         # 5. Ab neeche teeno tables dikhao
@@ -435,15 +415,17 @@ if uploaded_returns_files:
                 # Format the percentage column for display (00.00%)
                 sku_display_data['Return %'] = sku_display_data['Return_Pct_Raw'].apply(lambda x: f"{x:.2f}%")
                 
-                # --- MERGE PIVOTED REASONS DATA HERE (FOR EXPORT) ---
+                # --- MERGE ALL REASONS DATA HERE (FOR EXPORT) ---
+                # We are merging the single aggregated column 'All Reasons (Count)'
                 sku_display_data = pd.merge(
                     sku_display_data,
-                    sku_reasons_pivot,
+                    sku_all_reasons,
                     on='SKU',
                     how='left'
-                ).fillna('') # Fill NaN (where no reason data) with empty strings
+                ).fillna({'All Reasons (Count)': ''}) # Fill NaN (where no reason data) with empty strings
                 
                 # --- FINAL DISPLAY DATA (ONLY CORE COLUMNS) ---
+                # This ensures only the core columns are shown in st.dataframe
                 display_cols = ['SKU', 'Total Orders', 'Return Qty', 'Return %']
                 
                 # Display the data
@@ -452,17 +434,17 @@ if uploaded_returns_files:
                     use_container_width=True, 
                     height=500
                 )
-                st.caption(f"Note: Top {TOP_N_REASONS} Reasons are included in **separate columns** in the **CSV download** only.")
+                st.caption("Note: All aggregated reasons for each SKU are included in the **'All Reasons (Count)'** column in the **CSV download**.")
                 
             else:
                 # Agar Sales file upload nahi hui, toh sirf returns data dikhao
-                # Merge Reasons data for export if sales data is missing
+                # Merge All Reasons data for export if sales data is missing
                 sku_display_data = pd.merge(
                     sku_display_data.rename(columns={'Return Qty': 'Total Quantity'}),
-                    sku_reasons_pivot,
+                    sku_all_reasons,
                     on='SKU',
                     how='left'
-                ).fillna('')
+                ).fillna({'All Reasons (Count)': ''})
                 
                 display_cols = ['SKU', 'Total Quantity']
                 st.dataframe(
@@ -470,7 +452,7 @@ if uploaded_returns_files:
                     use_container_width=True, 
                     height=500
                 )
-                st.caption(f"Note: Top {TOP_N_REASONS} Reasons are included in **separate columns** in the **CSV download** only.")
+                st.caption("Note: All aggregated reasons for each SKU are included in the **'All Reasons (Count)'** column in the **CSV download**.")
             
         with res2:
             st.caption("Filtered Reasons")
@@ -487,19 +469,19 @@ if uploaded_returns_files:
         # --- Download Filtered Aggregated Results ---
         st.divider()
         st.subheader("Download Filtered Aggregated Results")
-        st.caption("The downloaded SKUs CSV will include the hidden reason columns.")
+        st.caption("The downloaded SKUs CSV will include all aggregated reasons in one column.")
         
         filter_down_col1, filter_down_col2, filter_down_col3, filter_down_col4 = st.columns(4)
         
         with filter_down_col1:
-            # We convert the final displayed SKU data (which includes all pivoted reason columns)
+            # We convert the final displayed SKU data (which includes the 'All Reasons (Count)' column)
             csv_data_sku = convert_df_to_csv(sku_display_data)
             st.download_button(
                 label="Download Filtered SKUs (CSV) ⬇️",
                 data=csv_data_sku,
-                file_name='filtered_sku_summary_with_separate_reasons.csv',
+                file_name='filtered_sku_summary_with_all_reasons.csv',
                 mime='text/csv',
-                help=f"Downloads the SKUs summary, including separate columns for Top {TOP_N_REASONS} Reasons (Qty)."
+                help=f"Downloads the SKUs summary, including all aggregated reasons (with counts) in one column."
             )
             
         with filter_down_col2:
