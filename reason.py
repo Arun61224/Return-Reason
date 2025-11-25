@@ -3,51 +3,61 @@ import pandas as pd
 import numpy as np
 import zipfile
 import io
+import xlsxwriter # Ensure this is installed!
 
-# --- Excel Utility: Write with Table Formatting (FINAL FIXED VERSION) ---
-# openpyxl engine is preferred for Streamlit as it's more robust with Pandas
+# --- Excel Utility: Write with Table Formatting (FINAL TABLE OBJECT VERSION) ---
 @st.cache_data
 def convert_df_to_excel_formatted(df, sheet_name='SKU_Summary'):
     output = io.BytesIO()
     
-    # Use ExcelWriter with openpyxl engine
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        
-        # 1. Write the entire DataFrame to the sheet 
-        df.to_excel(writer, index=False, sheet_name=sheet_name)
-        
-        # Get the openpyxl objects
-        # Note: If openpyxl is not installed, Streamlit will typically handle it, 
-        # but the environment should have it for this function to work fully.
-        workbook = writer.book
-        worksheet = writer.sheets[sheet_name]
-        
-        # Get the dimensions of the dataframe
-        (max_row, max_col) = df.shape
-        
-        # 2. Add AutoFilter to the header row (A1 to the last column/row)
-        # Note: Added +1 to max_row for correct range reference if data is present
-        worksheet.auto_filter.ref = f"A1:{worksheet.cell(row=max_row + 1, column=max_col).coordinate}"
-        
-        # 3. Freeze the header row (A2 is the first cell below the header)
-        worksheet.freeze_panes = 'A2'
-        
-        # 4. Apply column width and check for Return % column to apply formatting
-        for i, col in enumerate(df.columns):
-            col_letter = chr(65 + i) # A=65, B=66, etc.
-
-            # Set default column width (e.g., 20)
-            worksheet.column_dimensions[col_letter].width = 20
+    # ⚠️ CRITICAL CHANGE: Using 'xlsxwriter' engine to easily create Table Objects
+    try:
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             
-            # FIX: OPENPYXL SPECIFIC FORMATTING
-            if col == 'Return % (Decimal)':
-                # Apply the number format directly to cells (starting from row 2)
-                for row_num in range(2, max_row + 2):
-                    cell = worksheet[f'{col_letter}{row_num}']
-                    # Use '0.00%' format to show decimal as percentage
-                    cell.number_format = '0.00%' 
-                    
+            # 1. Write the entire DataFrame to the sheet 
+            # We skip index=False here as we will use add_table to define the structure
+            df.to_excel(writer, index=False, sheet_name=sheet_name)
+            
+            # Get the xlsxwriter objects
+            workbook = writer.book
+            worksheet = writer.sheets[sheet_name]
+            
+            # Get the dimensions of the dataframe
+            # max_row is data rows + 1 (header)
+            (max_row, max_col) = df.shape 
+            
+            # 2. Add a Table Object for Borders/Shading/Filters
+            # Range is from (Row 0, Col 0) to (Last Data Row, Last Col - 1)
+            # This automatically adds filters and proper table styling (borders, shading).
+            worksheet.add_table(0, 0, max_row, max_col - 1, {
+                'data': df.values.tolist(), # Passes data again to ensure table definition is perfect
+                'columns': [{'header': col} for col in df.columns],
+                'style': 'Table Style Medium 9' # Apply a default Excel Table Style (blue/white)
+            })
+            
+            # 3. Add Freeze Panes (xlsxwriter uses row/col index)
+            worksheet.freeze_panes(1, 0) # Freeze row 1 (the header)
 
+            # 4. Apply column width and check for Return % column
+            for i, col in enumerate(df.columns):
+                
+                # Set column width 
+                worksheet.set_column(i, i, 20)
+                
+                # Apply Percentage Format
+                if col == 'Return % (Decimal)':
+                    percent_format = workbook.add_format({'num_format': '0.00%'})
+                    # Apply format to the column (excluding header)
+                    worksheet.set_column(i, i, 20, 20, percent_format) # The 20, 20 are width and hidden args (ignored here)
+
+    except Exception as e:
+        # Fallback to simple openpyxl writing if xlsxwriter fails
+        st.error(f"Table formatting failed with xlsxwriter ({e}). Falling back to simple Excel. Did you run 'pip install xlsxwriter'?")
+        output = io.BytesIO()
+        df.to_excel(output, index=False, sheet_name=sheet_name, engine='openpyxl')
+        output.seek(0)
+        return output.getvalue()
+        
     processed_data = output.getvalue()
     return processed_data
 # --- End Excel Utility ---
@@ -583,7 +593,7 @@ if uploaded_returns_files:
 
 
         sku_csv_data = final_sku_csv_df.to_csv(index=False).encode('utf-8')
-        # *** THIS FUNCTION IS THE FIXED ONE FOR EXCEL FORMATTING ***
+        # *** THIS FUNCTION IS THE FIXED ONE FOR EXCEL TABLE OBJECT ***
         excel_data_sku = convert_df_to_excel_formatted(final_sku_excel_df) 
 
 
