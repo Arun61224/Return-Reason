@@ -1,13 +1,3 @@
-Aapne **galti se meri baat (text explanation) bhi code ke andar copy-paste kar di hai**, isliye yeh `SyntaxError` aa raha hai. Python script sirf code samajhta hai, Hindi/English sentences nahi.
-
-Screenshot mein Line 1 par likha hai: *"Haan, 'React Bits' ka..."* — yeh Python code nahi hai, isliye error aaya.
-
-### **Solution:**
-Apni `reason.py` file kholiye aur **Upar ki saari lines delete kar dijiye** jab tak `import streamlit as st` na aa jaye.
-
-Ya phir, **niche diya gaya code copy karein**. Maine isme se saari baatcheet hata di hai, yeh seedha chal jayega.
-
-```python
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -448,4 +438,3 @@ if uploaded_returns_files:
         st.warning("No Data Processed")
 else:
     st.info("Waiting for file upload...")
-```
