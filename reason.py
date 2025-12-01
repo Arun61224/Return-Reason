@@ -6,6 +6,7 @@ import io
 import xlsxwriter # <-- ENSURE THIS IS INSTALLED
 
 # --- Excel Utility: Write with Table Formatting (FINAL, CORRECTED TABLE OBJECT VERSION) ---
+# This version fixes the "more columns than 'data' passed" error.
 @st.cache_data
 def convert_df_to_excel_formatted(df, sheet_name='SKU_Summary'):
     output = io.BytesIO()
@@ -25,22 +26,30 @@ def convert_df_to_excel_formatted(df, sheet_name='SKU_Summary'):
             (max_row, max_col) = df.shape 
             
             # 2. Add a Table Object for Borders/Shading/Filters
+            # We omit the 'data' parameter to avoid conflicts and define the range properly.
+            # Range is from (Row 0, Col 0) to (Last Data Row, Last Col - 1)
             worksheet.add_table(0, 0, max_row, max_col - 1, {
+                # We define columns so headers are properly recognized
                 'columns': [{'header': col} for col in df.columns],
-                'style': 'Table Style Medium 9'
+                'style': 'Table Style Medium 9' # Apply a default Excel Table Style (Borders + Shading)
             })
             
-            # 3. Add Freeze Panes
+            # 3. Add Freeze Panes (Freeze row 1 - the header)
             worksheet.freeze_panes(1, 0)
 
             # 4. Apply column width and Percentage Format
             for i, col in enumerate(df.columns):
+                # Set column width 
                 worksheet.set_column(i, i, 20)
+                
+                # Apply Percentage Format
                 if col == 'Return % (Decimal)':
                     percent_format = workbook.add_format({'num_format': '0.00%'})
+                    # Apply format to the column (excluding header)
                     worksheet.set_column(i, i, 20, percent_format)
 
     except Exception as e:
+        # Fallback to simple writing if xlsxwriter fails
         st.error(f"Excel formatting failed. Please ensure 'xlsxwriter' is installed.")
         output = io.BytesIO()
         df.to_excel(output, index=False, sheet_name=sheet_name, engine='openpyxl')
@@ -49,36 +58,73 @@ def convert_df_to_excel_formatted(df, sheet_name='SKU_Summary'):
         
     processed_data = output.getvalue()
     return processed_data
+# --- End Excel Utility ---
 
-# 1. Column name mapping
+# 1. Column name mapping provided by you (Returns Data)
 COLUMN_MAPPING = {
-    'flipkart': {'sku_col': 'SKU', 'reason_col': 'Return Sub-reason', 'qty_col': 'Quantity'},
-    'ajio': {'sku_col': 'SELLER SKU', 'reason_col': 'Cust Return Reason', 'qty_col': 'Return QTY'},
-    'amazon': {'sku_col': 'sku', 'reason_col': 'reason', 'qty_col': 'quantity'},
-    'meesho': {'sku_col': 'SKU', 'reason_col': 'Detailed Return Reason'},
-    'firstcry': {'sku_col': 'VendorStyleCode', 'reason_col': 'Subreason', 'qty_col': 'Quantity'},
-    'amazon_flex': {'sku_col': 'Item SkuCode', 'reason_col': 'Return Reason', 'qty_col': 'Total Received Items'}
+    'flipkart': {
+        'sku_col': 'SKU',
+        'reason_col': 'Return Sub-reason',
+        'qty_col': 'Quantity'
+    },
+    'ajio': {
+        'sku_col': 'SELLER SKU',
+        'reason_col': 'Cust Return Reason',
+        'qty_col': 'Return QTY'
+    },
+    'amazon': {
+        'sku_col': 'sku',
+        'reason_col': 'reason',
+        'qty_col': 'quantity'
+    },
+    'meesho': {
+        'sku_col': 'SKU',
+        'reason_col': 'Detailed Return Reason'
+    },
+    'firstcry': {
+        'sku_col': 'VendorStyleCode',
+        'reason_col': 'Subreason',
+        'qty_col': 'Quantity'
+    },
+    'amazon_flex': {
+        'sku_col': 'Item SkuCode',
+        'reason_col': 'Return Reason',
+        'qty_col': 'Total Received Items'
+    }
 }
 
+# Mapping for display names
 DISPLAY_NAME_MAPPING = {
-    'amazon': 'Amazon Warehouse', 'flipkart': 'Flipkart', 'ajio': 'Ajio',
-    'meesho': 'Meesho', 'firstcry': 'Firstcry', 'amazon_flex': 'Amazon Flex'
+    'amazon': 'Amazon Warehouse',
+    'flipkart': 'Flipkart',
+    'ajio': 'Ajio',
+    'meesho': 'Meesho',
+    'firstcry': 'Firstcry',
+    'amazon_flex': 'Amazon Flex'
 }
 
-# --- Helper Functions ---
+# --- Helper Function: Get platform from filename ---
 def get_platform_from_name(filename_lower):
-    if 'amazon_flex' in filename_lower or 'amazon flex' in filename_lower: return 'amazon_flex'
-    elif 'amazon' in filename_lower: return 'amazon'
-    elif 'flipkart' in filename_lower: return 'flipkart'
-    elif 'meesho' in filename_lower: return 'meesho'
-    elif 'ajio' in filename_lower: return 'ajio'
-    elif 'firstcry' in filename_lower: return 'firstcry'
+    if 'amazon_flex' in filename_lower or 'amazon flex' in filename_lower:
+        return 'amazon_flex'
+    elif 'amazon' in filename_lower:
+        return 'amazon'
+    elif 'flipkart' in filename_lower:
+        return 'flipkart'
+    elif 'meesho' in filename_lower:
+        return 'meesho'
+    elif 'ajio' in filename_lower:
+        return 'ajio'
+    elif 'firstcry' in filename_lower:
+        return 'firstcry'
     return None
 
+# --- Helper Function: Extract data from a file object (Returns Data) ---
 def extract_data(file_object, platform, filename_for_error_msg):
     df = None
     try:
         mapping = COLUMN_MAPPING[platform]
+        
         if filename_for_error_msg.lower().endswith('.xlsx'):
             df = pd.read_excel(file_object, engine='openpyxl')
         else:
@@ -125,17 +171,27 @@ def extract_data(file_object, platform, filename_for_error_msg):
         temp_df['Final_Qty'] = temp_df['Final_Qty'].astype(int)
         
         return temp_df
+
+    except KeyError as e:
+        st.error(f"Error processing {filename_for_error_msg}: Column '{e}' not found.")
+        if df is not None:
+            st.error(f"Columns found in file: {list(df.columns)}")
+        st.warning("Please check 'COLUMN_MAPPING' in the code. Note: Column names are case-sensitive and space-sensitive.")
+        return None
     except Exception as e:
-        st.error(f"Error processing {filename_for_error_msg}: {e}")
+        st.error(f"General error processing {filename_for_error_msg}: {e}.")
         return None
 
+# 2. Main File processing function (Handles ZIP files for Returns Data)
 def process_returns_files(uploaded_files):
     all_data_list = []
+    
     for uploaded_file in uploaded_files:
         filename = ""
         try:
             filename = uploaded_file.name.lower()
-        except Exception: continue
+        except Exception:
+            continue
         
         if filename.endswith('.zip'):
             try:
@@ -147,7 +203,8 @@ def process_returns_files(uploaded_files):
                         if platform:
                             with zf.open(internal_filename) as f:
                                 temp_df = extract_data(f, platform, internal_filename)
-                                if temp_df is not None: all_data_list.append(temp_df)
+                                if temp_df is not None:
+                                    all_data_list.append(temp_df)
             except Exception as e:
                 st.error(f"Failed to process ZIP file {uploaded_file.name}: {e}")
         
@@ -155,7 +212,10 @@ def process_returns_files(uploaded_files):
             platform = get_platform_from_name(filename)
             if platform:
                 temp_df = extract_data(uploaded_file, platform, filename)
-                if temp_df is not None: all_data_list.append(temp_df)
+                if temp_df is not None:
+                    all_data_list.append(temp_df)
+            else:
+                st.warning(f"Skipping file (platform not recognized): {filename}")
                 
     if not all_data_list:
         return pd.DataFrame(columns=['Final_SKU', 'Final_Reason', 'Platform', 'Final_Qty'])
@@ -164,10 +224,14 @@ def process_returns_files(uploaded_files):
     master_df = master_df[master_df['Final_Qty'] > 0]
     master_df['Final_SKU'] = master_df['Final_SKU'].astype(str)
     master_df['Final_Reason'] = master_df['Final_Reason'].astype(str)
+    
     return master_df
 
+# --- Function to process Sales/Order Data (Grouped by SKU AND Platform) ---
 def process_sales_data(sales_file):
-    if not sales_file: return None
+    if not sales_file:
+        return None
+    
     try:
         filename = sales_file.name.lower()
         if filename.endswith('.xlsx'):
@@ -180,21 +244,31 @@ def process_sales_data(sales_file):
                 sales_df = pd.read_csv(sales_file, encoding='latin1')
 
         sales_df.columns = [str(col).strip() for col in sales_df.columns]
+        
+        # We need MSKU, Customer Shipments, and Platform from the Sales File
         required_cols = ['MSKU', 'Customer Shipments', 'Platform'] 
         if not all(col in sales_df.columns for col in required_cols):
             st.error("Sales file must contain 'MSKU', 'Customer Shipments', and 'Platform' columns.")
             return None
 
         sales_df['Platform'] = sales_df['Platform'].apply(lambda x: x.strip())
+        
+        # Group by SKU AND Platform
         total_orders_platform_df = sales_df.groupby(['MSKU', 'Platform'])['Customer Shipments'].sum().reset_index()
         total_orders_platform_df.columns = ['Final_SKU', 'Platform', 'Total_Orders']
+        
         total_orders_platform_df['Final_SKU'] = total_orders_platform_df['Final_SKU'].astype(str)
         total_orders_platform_df['Total_Orders'] = pd.to_numeric(total_orders_platform_df['Total_Orders'], errors='coerce').fillna(0).astype(int)
-        st.sidebar.success(f"Sales Data Processed. Total Orders: {total_orders_platform_df['Total_Orders'].sum()}")
+        
+        total_orders_sum = total_orders_platform_df['Total_Orders'].sum()
+        st.sidebar.success(f"Sales Data Processed. Total Orders counted: {total_orders_sum}")
+        
         return total_orders_platform_df
+
     except Exception as e:
         st.sidebar.error(f"Error processing Sales Data: {e}")
         return None
+
 
 # --- Streamlit App UI ---
 st.set_page_config(layout="wide")
@@ -204,45 +278,34 @@ st.title("🛍️ Online Seller Return Analysis Dashboard")
 st.sidebar.header("Step 1: Upload Returns Data")
 uploaded_returns_files = st.sidebar.file_uploader(
     "Upload Returns files (.csv, .xlsx, or .zip)",
-    accept_multiple_files=True, type=['xlsx', 'csv', 'zip'], key='returns_uploader'
+    accept_multiple_files=True,
+    type=['xlsx', 'csv', 'zip'],
+    key='returns_uploader'
 )
 
 st.sidebar.header("Step 2: Upload Sales/Order Data")
 st.sidebar.caption("Must contain 'MSKU', 'Customer Shipments', and 'Platform' columns.")
-
-# --- TEMPLATE DOWNLOAD BUTTON ADDED HERE ---
-template_data = {
-    'MSKU': ['SKU_EXAMPLE_1', 'SKU_EXAMPLE_2'],
-    'Customer Shipments': [10, 5],
-    'Platform': ['Amazon', 'Flipkart']
-}
-template_df = pd.DataFrame(template_data)
-template_csv = template_df.to_csv(index=False).encode('utf-8')
-
-st.sidebar.download_button(
-    label="📄 Download Sales Template (.csv)",
-    data=template_csv,
-    file_name='sales_data_template.csv',
-    mime='text/csv',
-    help="Click to download a sample CSV file with the required columns."
-)
-# --- END TEMPLATE DOWNLOAD ---
-
 uploaded_sales_file = st.sidebar.file_uploader(
     "Upload Single Sales/Order File (for Return %)",
-    type=['xlsx', 'csv'], key='sales_uploader'
+    type=['xlsx', 'csv'],
+    key='sales_uploader'
 )
+# --- End Uploaders ---
 
 if uploaded_returns_files:
     master_df = process_returns_files(uploaded_returns_files)
-    total_orders_platform_df = process_sales_data(uploaded_sales_file)
+    total_orders_platform_df = process_sales_data(uploaded_sales_file) # Process Sales data grouped by SKU & Platform
     
     if not master_df.empty:
-        st.success(f"Successfully processed {len(uploaded_returns_files)} returns files. Total items: {master_df['Final_Qty'].sum()}")
+        st.success(f"Successfully processed {len(uploaded_returns_files)} returns files/archives. Total returned items: {master_df['Final_Qty'].sum()}")
+        
         filtered_df = master_df.copy()
         
         st.header("Overall Return Analysis")
         
+        # --- Cross-Filtering Logic (Multiselect Slicers) ---
+        
+        # 1. Pehle teeno filters ke liye data banao
         sku_data = filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
         sku_data.columns = ['SKU', 'Total Quantity']
         sku_data['SKU_with_Count'] = sku_data['SKU'] + " (" + sku_data['Total Quantity'].astype(str) + ")"
@@ -255,123 +318,315 @@ if uploaded_returns_files:
         platform_data.columns = ['Platform', 'Total Quantity']
         platform_data['Platform_with_Count'] = platform_data['Platform'] + " (" + platform_data['Total Quantity'].astype(str) + ")"
 
+        # 2. Multiselect lists banao 
+        sku_list_for_multiselect = list(sku_data['SKU_with_Count'])
+        reason_list_for_multiselect = list(reason_data['Reason_with_Count'])
+        platform_list_multiselect = list(platform_data['Platform_with_Count'])
+        
+        # 3. Ab teeno filters ko TOP par dikhao (USING st.multiselect)
         st.subheader("Cross-Slicers (Select Multiple Options)")
         col1, col2, col3 = st.columns(3)
         with col1:
-            sku_search_list = st.multiselect("Filter by SKU:", options=list(sku_data['SKU_with_Count']), default=[], key="sku_search")
+            sku_search_list = st.multiselect(
+                "Filter by SKU:", 
+                options=sku_list_for_multiselect, 
+                default=[],
+                key="sku_search"
+            )
         with col2:
-            reason_search_list = st.multiselect("Filter by Reason:", options=list(reason_data['Reason_with_Count']), default=[], key="reason_search")
+            reason_search_list = st.multiselect(
+                "Filter by Reason:", 
+                options=reason_list_for_multiselect,
+                default=[], 
+                key="reason_search"
+            )
         with col3:
-            platform_search_list = st.multiselect("Filter by Platform:", options=list(platform_data['Platform_with_Count']), default=[], key="platform_search")
+            platform_search_list = st.multiselect(
+                "Filter by Platform:", 
+                options=platform_list_multiselect,
+                default=[], 
+                key="platform_search"
+            )
 
+        # 4. Ab ek FINAL filtered DataFrame banao
         final_filtered_df = filtered_df.copy()
+
         if sku_search_list:
-            final_filtered_df = final_filtered_df[final_filtered_df['Final_SKU'].isin([s.split(' (')[0] for s in sku_search_list])]
+            selected_sku_names = [s.split(' (')[0] for s in sku_search_list]
+            final_filtered_df = final_filtered_df[final_filtered_df['Final_SKU'].isin(selected_sku_names)]
+
         if reason_search_list:
-            final_filtered_df = final_filtered_df[final_filtered_df['Final_Reason'].isin([r.split(' (')[0] for r in reason_search_list])]
+            selected_reason_names = [r.split(' (')[0] for r in reason_search_list]
+            final_filtered_df = final_filtered_df[final_filtered_df['Final_Reason'].isin(selected_reason_names)]
+            
         if platform_search_list:
-            final_filtered_df = final_filtered_df[final_filtered_df['Platform'].isin([p.split(' (')[0] for p in platform_search_list])]
+            selected_platform_names = [p.split(' (')[0] for p in platform_search_list]
+            final_filtered_df = final_filtered_df[final_filtered_df['Platform'].isin(selected_platform_names)]
             
         st.divider()
         st.subheader(f"Filtered Summary Tables (Total Items: {final_filtered_df['Final_Qty'].sum()})")
 
+        # --- REASON PIVOTING LOGIC (REASON 1, REASON 2, ... FORMAT WITH COUNT) ---
         TOP_N_REASONS = 10 
-        reason_agg = final_filtered_df.groupby(['Final_SKU', 'Final_Reason'])['Final_Qty'].sum().reset_index()
-        reason_agg['Rank'] = reason_agg.groupby('Final_SKU')['Final_Qty'].rank(method='first', ascending=False)
-        top_reasons = reason_agg[reason_agg['Rank'] <= TOP_N_REASONS].copy()
-        top_reasons['New_Col_Name'] = 'Reason ' + top_reasons['Rank'].astype(int).astype(str)
-        top_reasons['Reason_Count_Combined'] = top_reasons.apply(lambda row: f"{row['Final_Reason']} ({row['Final_Qty']})" if row['Final_Qty'] > 1 else f"{row['Final_Reason']}", axis=1)
         
-        sku_reasons_pivot = top_reasons.pivot(index='Final_SKU', columns='New_Col_Name', values='Reason_Count_Combined').reset_index()
+        # 1. Group by SKU and Reason, summing the quantities
+        reason_agg = final_filtered_df.groupby(['Final_SKU', 'Final_Reason'])['Final_Qty'].sum().reset_index()
+        
+        # 2. Rank reasons within each SKU based on quantity (highest quantity = rank 1)
+        reason_agg['Rank'] = reason_agg.groupby('Final_SKU')['Final_Qty'].rank(method='first', ascending=False)
+        
+        # Filter for top N reasons (Top 10)
+        top_reasons = reason_agg[reason_agg['Rank'] <= TOP_N_REASONS].copy()
+        
+        # Create column names: 'Reason 1', 'Reason 2', etc.
+        top_reasons['New_Col_Name'] = 'Reason ' + top_reasons['Rank'].astype(int).astype(str)
+        
+        # Create a combined string for Reason and Count: "Reason Name (Count)"
+        top_reasons['Reason_Count_Combined'] = top_reasons.apply(
+            lambda row: f"{row['Final_Reason']} ({row['Final_Qty']})" if row['Final_Qty'] > 1 else f"{row['Final_Reason']}",
+            axis=1
+        )
+        
+        # Pivot the data to get reasons in separate columns
+        sku_reasons_pivot = top_reasons.pivot(
+            index='Final_SKU', 
+            columns='New_Col_Name', 
+            values='Reason_Count_Combined'
+        ).reset_index()
         sku_reasons_pivot.rename(columns={'Final_SKU': 'SKU'}, inplace=True)
+        
         sku_reasons_pivot = sku_reasons_pivot.fillna('')
         
+        # Ensure all Top N columns exist and define the order
         reason_cols_order = [f'Reason {i}' for i in range(1, TOP_N_REASONS + 1)]
         for col in reason_cols_order:
-            if col not in sku_reasons_pivot.columns: sku_reasons_pivot[col] = ''
+            if col not in sku_reasons_pivot.columns:
+                sku_reasons_pivot[col] = ''
+                
         sku_reasons_pivot = sku_reasons_pivot[['SKU'] + reason_cols_order]
+        # --- END REASON PIVOTING LOGIC ---
 
+
+        # 5. Ab neeche teeno tables dikhao
         res1, res2, res3 = st.columns(3)
         
+        # --- SKU Summary Logic ---
         with res1:
-            st.caption("Filter SKUs by Return % Range")
+            # --- MANUAL INPUTS FOR RETURN PERCENTAGE RANGE ---
+            st.caption("Filter SKUs by Return % Range (0.00% to 100.00%)")
             col_min, col_max = st.columns(2)
-            with col_min: min_pct = st.number_input("Min Return %", 0.0, 100.0, 0.0, 0.01, format="%.2f")
-            with col_max: max_pct = st.number_input("Max Return %", 0.0, 100.0, 100.0, 0.01, format="%.2f")
+            
+            with col_min:
+                min_pct = st.number_input(
+                    "Minimum Return %",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=0.0,
+                    step=0.01,
+                    format="%.2f",
+                    key="min_pct_input"
+                )
+            with col_max:
+                max_pct = st.number_input(
+                    "Maximum Return %",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=100.0,
+                    step=0.01,
+                    format="%.2f",
+                    key="max_pct_input"
+                )
+            
+            if min_pct > max_pct:
+                st.error("Minimum % value cannot be greater than Maximum % value.")
+                min_pct, max_pct = 0.0, 100.0 
+                
+            st.caption("Filtered SKUs (Return vs. Orders / Top Reasons)")
             
             sku_display_data = final_filtered_df.groupby('Final_SKU')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
             sku_display_data.columns = ['SKU', 'Return Qty'] 
+
+            # Initialize final DataFrame for export/download
             sku_final_export_data = sku_display_data.copy()
             
             if total_orders_platform_df is not None:
-                orders_filtered = total_orders_platform_df.copy()
+                # --- Sales Data Present ---
+                
+                # Filter Order Data by selected platforms
+                orders_filtered_by_platform = total_orders_platform_df.copy()
                 if platform_search_list:
-                    orders_filtered = orders_filtered[orders_filtered['Platform'].isin([p.split(' (')[0] for p in platform_search_list])]
-                total_orders_merge = orders_filtered.groupby('Final_SKU')['Total_Orders'].sum().reset_index()
-                total_orders_merge.columns = ['SKU', 'Total Orders']
+                    selected_platform_names = [p.split(' (')[0] for p in platform_search_list]
+                    orders_filtered_by_platform = orders_filtered_by_platform[
+                        orders_filtered_by_platform['Platform'].isin(selected_platform_names)
+                    ]
                 
-                sku_final_export_data = pd.merge(sku_final_export_data, total_orders_merge, on='SKU', how='left')
-                sku_final_export_data['Total Orders'] = sku_final_export_data['Total Orders'].fillna(0).astype(int)
+                # Aggregate filtered orders by SKU for the merge
+                total_orders_for_merge = orders_filtered_by_platform.groupby('Final_SKU')['Total_Orders'].sum().reset_index()
+                total_orders_for_merge.columns = ['SKU', 'Total Orders'] 
                 
-                sku_final_export_data['Return_Pct_Raw'] = np.where(
-                    sku_final_export_data['Total Orders'] > 0,
-                    (sku_final_export_data['Return Qty'] / sku_final_export_data['Total Orders']), 0.0
+                # Merge with SKU returns data
+                sku_final_export_data = pd.merge(
+                    sku_final_export_data, 
+                    total_orders_for_merge, 
+                    on='SKU', 
+                    how='left'
                 )
                 
+                sku_final_export_data['Total Orders'] = sku_final_export_data['Total Orders'].fillna(0).astype(int)
+                
+                # Calculate Return_Pct_Raw (0-1 range) - CRITICAL FOR EXCEL DATA
+                sku_final_export_data['Return_Pct_Raw'] = np.where(
+                    sku_final_export_data['Total Orders'] > 0,
+                    (sku_final_export_data['Return Qty'] / sku_final_export_data['Total Orders']), 
+                    0.0
+                )
+                
+                # --- APPLYING THE MANUAL RETURN PERCENTAGE FILTER (on the Raw data) ---
                 sku_final_export_data = sku_final_export_data[
                     (sku_final_export_data['Return_Pct_Raw'] * 100 >= min_pct) & 
                     (sku_final_export_data['Return_Pct_Raw'] * 100 <= max_pct)
                 ].copy()
+                # --- END APPLYING FILTER ---
                 
+                # Format the percentage column for DISPLAY (00.00%)
                 sku_final_export_data['Return %'] = sku_final_export_data['Return_Pct_Raw'].apply(lambda x: f"{x * 100:.2f}%")
-                sku_final_export_data = pd.merge(sku_final_export_data, sku_reasons_pivot, on='SKU', how='left').fillna('')
-                st.dataframe(sku_final_export_data[['SKU', 'Total Orders', 'Return Qty', 'Return %']], use_container_width=True, height=500)
-            else:
-                sku_final_export_data = pd.merge(sku_final_export_data.rename(columns={'Return Qty': 'Total Quantity'}), sku_reasons_pivot, on='SKU', how='left').fillna('')
-                st.dataframe(sku_final_export_data, use_container_width=True, height=500)
+                
+                # --- Merge Pivoted Reasons for Export ---
+                sku_final_export_data = pd.merge(
+                    sku_final_export_data, 
+                    sku_reasons_pivot,
+                    on='SKU', 
+                    how='left'
+                ).fillna('')
 
+                # --- FINAL DISPLAY DATA (Web View with Return %) ---
+                display_cols = ['SKU', 'Total Orders', 'Return Qty', 'Return %']
+                st.dataframe(
+                    sku_final_export_data[display_cols],
+                    use_container_width=True, 
+                    height=500
+                )
+                st.caption(f"Note: CSV/Excel download includes **Total Orders**, **Return %**, and **Top {TOP_N_REASONS} Reasons**.")
+
+            else:
+                # --- Sales Data NOT Present ---
+                
+                # Merge All Reasons data for display/export
+                sku_final_export_data = pd.merge(
+                    sku_final_export_data.rename(columns={'Return Qty': 'Total Quantity'}),
+                    sku_reasons_pivot,
+                    on='SKU',
+                    how='left'
+                ).fillna('')
+                
+                # --- APPLYING FILTER (No % Filter possible) ---
+                # Since we applied filters before this logic block, this is the final filtered data.
+                
+                # --- FINAL DISPLAY DATA (Web View with Top Reasons) ---
+                display_cols = ['SKU', 'Total Quantity'] + [f'Reason {i}' for i in range(1, 3) if f'Reason {i}' in sku_final_export_data.columns] # Show top 2 reasons if available
+                
+                st.dataframe(
+                    sku_final_export_data[display_cols], 
+                    use_container_width=True, 
+                    height=500
+                )
+                st.caption(f"Note: CSV/Excel download includes **Total Quantity** and **Top {TOP_N_REASONS} Reasons**.")
+
+        # --- REASON SUMMARY TABLE ---
         with res2:
             st.caption("Filtered Reasons")
-            reason_display = final_filtered_df.groupby('Final_Reason')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
-            reason_display.columns = ['Reason', 'Total Quantity']
-            st.dataframe(reason_display, use_container_width=True, height=500)
+            reason_display_data = final_filtered_df.groupby('Final_Reason')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
+            reason_display_data.columns = ['Reason', 'Total Quantity']
+            st.dataframe(reason_display_data, use_container_width=True, height=500)
             
+        # --- PLATFORM SUMMARY TABLE ---
         with res3:
             st.caption("Filtered Platforms")
-            platform_display = final_filtered_df.groupby('Platform')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
-            platform_display.columns = ['Platform', 'Total Quantity']
-            st.dataframe(platform_display, use_container_width=True, height=500)
+            platform_display_data = final_filtered_df.groupby('Platform')['Final_Qty'].sum().sort_values(ascending=False).reset_index()
+            platform_display_data.columns = ['Platform', 'Total Quantity']
+            st.dataframe(platform_display_data, use_container_width=True, height=500)
             
+        # --- Download Filtered Aggregated Results ---
         st.divider()
-        st.subheader("Download Filtered Results")
+        st.subheader("Download Filtered Aggregated Results")
         
+        # --- Prepare Final Export Data Structure and Columns (Ensuring order and correct types) ---
         cols = sku_final_export_data.columns.tolist()
         reason_cols = [col for col in cols if col.startswith('Reason ')]
         
+        # Define the Excel/CSV DataFrames based on sales data availability
         if 'Total Orders' in sku_final_export_data.columns:
-            sku_final_export_csv = sku_final_export_data.drop(columns=['Return_Pct_Raw'], errors='ignore')
-            sku_final_export_excel = sku_final_export_data.drop(columns=['Return %'], errors='ignore')
-            sku_final_export_excel.rename(columns={'Return_Pct_Raw': 'Return % (Decimal)'}, inplace=True)
             
-            order_csv = ['SKU', 'Total Orders', 'Return Qty', 'Return %'] + reason_cols
-            order_excel = ['SKU', 'Total Orders', 'Return Qty', 'Return % (Decimal)'] + reason_cols
+            # 1. Create the final Excel/CSV structure
+            sku_final_export_csv_df = sku_final_export_data.drop(columns=['Return_Pct_Raw'], errors='ignore')
+            # Excel DataFrame: Keep only the Raw decimal value and drop the string format
+            sku_final_export_excel_df = sku_final_export_data.drop(columns=['Return %'], errors='ignore')
             
-            final_csv_df = sku_final_export_csv[order_csv]
-            final_excel_df = sku_final_export_excel[order_excel]
+            # 2. Rename the RAW column for Excel (This column will receive Excel percentage formatting)
+            sku_final_export_excel_df.rename(columns={'Return_Pct_Raw': 'Return % (Decimal)'}, inplace=True)
+            
+            # 3. Define Final Export Order
+            core_cols_csv = ['SKU', 'Total Orders', 'Return Qty', 'Return %']
+            core_cols_excel = ['SKU', 'Total Orders', 'Return Qty', 'Return % (Decimal)']
+            
+            final_export_csv_order = core_cols_csv + reason_cols
+            final_export_excel_order = core_cols_excel + reason_cols
+            
+            # Reorder
+            final_sku_csv_df = sku_final_export_csv_df.loc[:, final_export_csv_order]
+            final_sku_excel_df = sku_final_export_excel_df.loc[:, final_export_excel_order]
+            
+            csv_help_text = f"Downloads the SKU summary including Total Orders, Return % (string), and Top {TOP_N_REASONS} Reasons."
+            excel_help_text = f"Downloads the SKU summary including Total Orders, Return % (Auto-formatted in Excel), and Top {TOP_N_REASONS} Reasons."
         else:
-            order_cols = ['SKU', 'Total Quantity'] + reason_cols
-            final_csv_df = sku_final_export_data[order_cols]
-            final_excel_df = sku_final_export_data[order_cols]
+            # Sales data is NOT present. Only Returns Quantity and Reasons.
+            core_cols = ['SKU', 'Total Quantity']
+            final_export_order = core_cols + reason_cols
+            
+            final_sku_csv_df = sku_final_export_data.loc[:, final_export_order]
+            final_sku_excel_df = sku_final_export_data.loc[:, final_export_order]
 
-        col_d1, col_d2, col_d3 = st.columns(3)
-        with col_d1:
-            st.download_button("Download Filtered SKUs (CSV) ⬇️", final_csv_df.to_csv(index=False).encode('utf-8'), 'sku_summary.csv', 'text/csv')
-        with col_d2:
-            st.download_button("Download Filtered SKUs (Excel) ⬇️", convert_df_to_excel_formatted(final_excel_df), 'sku_summary.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        with col_d3:
-            st.download_button("Download Reasons (CSV) ⬇️", reason_display.to_csv(index=False).encode('utf-8'), 'reason_summary.csv', 'text/csv')
+            csv_help_text = f"Downloads the SKU summary including Total Quantity and Top {TOP_N_REASONS} Reasons."
+            excel_help_text = f"Downloads the SKU summary including Total Quantity and Top {TOP_N_REASONS} Reasons."
+
+
+        sku_csv_data = final_sku_csv_df.to_csv(index=False).encode('utf-8')
+        # *** THIS FUNCTION IS THE FIXED ONE FOR EXCEL TABLE OBJECT ***
+        excel_data_sku = convert_df_to_excel_formatted(final_sku_excel_df) 
+
+
+        filter_down_col1, filter_down_col2, filter_down_col3, filter_down_col4 = st.columns(4)
+        
+        with filter_down_col1:
+            st.download_button(
+                label="Download Filtered SKUs (CSV) ⬇️",
+                data=sku_csv_data,
+                file_name='filtered_sku_summary_with_reasons.csv',
+                mime='text/csv',
+                help=csv_help_text
+            )
+            
+        with filter_down_col2:
+            st.download_button(
+                label="Download Filtered SKUs (Excel) ⬇️",
+                data=excel_data_sku,
+                file_name='filtered_sku_summary_report.xlsx',
+                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                help=excel_help_text
+            )
+            
+        with filter_down_col3:
+            csv_data_reason = reason_display_data.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="Download Filtered Reasons (CSV) ⬇️",
+                data=csv_data_reason,
+                file_name='filtered_reason_summary.csv',
+                mime='text/csv',
+                help="Downloads the visible Filtered Reasons table."
+            )
+        # --- END Download Filtered Aggregated Results ---
 
     else:
-        st.warning("No data found after processing.")
+        st.warning("No data found after processing. Please check your files or column names.")
 else:
-    st.info("Please upload your **Returns Data** and **Sales Data** (Optional) from the sidebar.")
+    st.info("Please upload your **Returns Data** and **Sales Data** from the sidebar to start the analysis.")
