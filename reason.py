@@ -1,15 +1,11 @@
-Haan, "React Bits" ka **Dither (Wave) effect** Streamlit mein add karna thoda tricky hai kyunki Streamlit basic Python script hai aur React Bits complex JavaScript/WebGL use karta hai.
+Aapne **galti se meri baat (text explanation) bhi code ke andar copy-paste kar di hai**, isliye yeh `SyntaxError` aa raha hai. Python script sirf code samajhta hai, Hindi/English sentences nahi.
 
-Lekin, main ek **Custom HTML/JS Component** inject karke yeh effect **background** mein chala sakta hoon. Isse aapka dashboard ekdum **Dark Mode Cyberpunk/Modern Web App** jaisa lagega.
+Screenshot mein Line 1 par likha hai: *"Haan, 'React Bits' ka..."* — yeh Python code nahi hai, isliye error aaya.
 
-Is update mein maine yeh kiya hai:
-1.  **Dark Theme Force:** React Bits effects dark background pe best lagte hain, isliye text aur cards ko dark mode compatible banaya hai.
-2.  **Animated Dither Background:** Ek custom JavaScript Canvas script add kiya hai jo background mein dots ko wave ki tarah animate karega (React Bits style).
-3.  **Glassmorphism UI:** Cards ko semi-transparent (glass effect) diya hai taaki background dikhe.
+### **Solution:**
+Apni `reason.py` file kholiye aur **Upar ki saari lines delete kar dijiye** jab tak `import streamlit as st` na aa jaye.
 
-Niche pura code hai. Isko copy-paste karein.
-
-### **Updated Code (With React Bits "Dither" Style Background)**
+Ya phir, **niche diya gaya code copy karein**. Maine isme se saari baatcheet hata di hai, yeh seedha chal jayega.
 
 ```python
 import streamlit as st
@@ -18,7 +14,6 @@ import numpy as np
 import zipfile
 import io
 import plotly.express as px
-import plotly.io as pio
 import xlsxwriter
 import streamlit.components.v1 as components
 
@@ -26,7 +21,6 @@ import streamlit.components.v1 as components
 st.set_page_config(page_title="Return Analysis Dashboard", page_icon="⚡", layout="wide")
 
 # --- 1. REACT BITS DITHER BACKGROUND & DARK THEME CSS ---
-# Yeh script background mein ek Canvas banayega aur dots ko wave effect dega.
 st.markdown("""
 <style>
     /* --- DARK THEME OVERRIDES --- */
@@ -88,7 +82,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- 2. JAVASCRIPT FOR DITHER EFFECT (Injecting via Component) ---
-# Hum HTML/JS inject kar rahe hain jo Streamlit ke iframe se bahar nikal kar background banayega.
 dither_html = """
 <!DOCTYPE html>
 <html>
@@ -159,11 +152,11 @@ dither_html = """
 </html>
 """
 
-# Injecting the background script (Height 0 ensures it doesn't take up layout space but covers background via Fixed Position in CSS)
+# Injecting the background script
 components.html(dither_html, height=0, scrolling=False)
 
 
-# --- UTILITY FUNCTIONS (Unchanged) ---
+# --- UTILITY FUNCTIONS ---
 @st.cache_data
 def convert_df_to_excel_formatted(df, sheet_name='SKU_Summary'):
     output = io.BytesIO()
@@ -456,9 +449,3 @@ if uploaded_returns_files:
 else:
     st.info("Waiting for file upload...")
 ```
-
-### **Kya Special Hai Isme?**
-1.  **Background Animation:** Maine ek `canvas` script inject kiya hai jo background mein dots ka **wave/breathing effect** banata hai (React Bits style).
-2.  **Dark Mode:** Pura theme dark grey/black hai taaki background shine kare.
-3.  **Cards:** KPI metrics ab simple text nahi, balki glass-effect boxes hain.
-4.  **Plotly Dark Template:** Graphs ab black background ke sath blend hote hain (white box nahi dikhega).
