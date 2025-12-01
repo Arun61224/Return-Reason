@@ -276,6 +276,47 @@ st.title("🛍️ Online Seller Return Analysis Dashboard")
 
 # 3. File Uploaders in sidebar
 st.sidebar.header("Step 1: Upload Returns Data")
+
+# --- DOWNLOAD TEMPLATE SECTION ---
+with st.sidebar.expander("📥 Download Return Data Templates"):
+    st.caption("Download sample templates showing the required column format for each platform.")
+    
+    # Create sample templates for each platform
+    template_platform = st.selectbox(
+        "Select Platform Template:",
+        options=['flipkart', 'ajio', 'amazon', 'meesho', 'firstcry', 'amazon_flex'],
+        format_func=lambda x: DISPLAY_NAME_MAPPING.get(x, x.capitalize()),
+        key='template_platform'
+    )
+    
+    # Generate sample data for selected platform
+    mapping = COLUMN_MAPPING[template_platform]
+    
+    if mapping.get('qty_col'):
+        template_data = {
+            mapping['sku_col']: ['SKU001', 'SKU002', 'SKU003'],
+            mapping['reason_col']: ['Size Issue', 'Quality Issue', 'Wrong Product'],
+            mapping['qty_col']: [1, 2, 1]
+        }
+    else:
+        template_data = {
+            mapping['sku_col']: ['SKU001', 'SKU002', 'SKU003'],
+            mapping['reason_col']: ['Size Issue', 'Quality Issue', 'Wrong Product']
+        }
+    
+    template_df = pd.DataFrame(template_data)
+    template_csv = template_df.to_csv(index=False).encode('utf-8')
+    
+    display_name = DISPLAY_NAME_MAPPING.get(template_platform, template_platform.capitalize())
+    st.download_button(
+        label=f"Download {display_name} Template (CSV) ⬇️",
+        data=template_csv,
+        file_name=f'{template_platform}_return_template.csv',
+        mime='text/csv',
+        help=f"Downloads a sample template with required columns: {', '.join(template_data.keys())}"
+    )
+# --- END DOWNLOAD TEMPLATE SECTION ---
+
 uploaded_returns_files = st.sidebar.file_uploader(
     "Upload Returns files (.csv, .xlsx, or .zip)",
     accept_multiple_files=True,
@@ -584,98 +625,46 @@ if uploaded_returns_files:
             final_export_order = core_cols + reason_cols
             
             final_sku_csv_df = sku_final_export_data.loc[:, final_export_order]
-            final_sku_excel_df = sku_final_export_data.loc[:, final_export_order]
-
+            final_sku_excel
             csv_help_text = f"Downloads the SKU summary including Total Quantity and Top {TOP_N_REASONS} Reasons."
-            excel_help_text = f"Downloads the SKU summary including Total Quantity and Top {TOP_N_REASONS} Reasons."
+        excel_help_text = f"Downloads the SKU summary including Total Quantity and Top {TOP_N_REASONS} Reasons."
 
 
-        sku_csv_data = final_sku_csv_df.to_csv(index=False).encode('utf-8')
-        # *** THIS FUNCTION IS THE FIXED ONE FOR EXCEL TABLE OBJECT ***
-        excel_data_sku = convert_df_to_excel_formatted(final_sku_excel_df) 
+    sku_csv_data = final_sku_csv_df.to_csv(index=False).encode('utf-8')
+    # *** THIS FUNCTION IS THE FIXED ONE FOR EXCEL TABLE OBJECT ***
+    excel_data_sku = convert_df_to_excel_formatted(final_sku_excel_df) 
 
 
-        filter_down_col1, filter_down_col2, filter_down_col3, filter_down_col4 = st.columns(4)
+    filter_down_col1, filter_down_col2, filter_down_col3, filter_down_col4 = st.columns(4)
+    
+    with filter_down_col1:
+        st.download_button(
+            label="Download Filtered SKUs (CSV) ⬇️",
+            data=sku_csv_data,
+            file_name='filtered_sku_summary_with_reasons.csv',
+            mime='text/csv',
+            help=csv_help_text
+        )
         
-        with filter_down_col1:
-            st.download_button(
-                label="Download Filtered SKUs (CSV) ⬇️",
-                data=sku_csv_data,
-                file_name='filtered_sku_summary_with_reasons.csv',
-                mime='text/csv',
-                help=csv_help_text
-            )
-            
-        with filter_down_col2:
-            st.download_button(
-                label="Download Filtered SKUs (Excel) ⬇️",
-                data=excel_data_sku,
-                file_name='filtered_sku_summary_report.xlsx',
-                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                help=excel_help_text
-            )
-            
-        with filter_down_col3:
-            csv_data_reason = reason_display_data.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="Download Filtered Reasons (CSV) ⬇️",
-                data=csv_data_reason,
-                file_name='filtered_reason_summary.csv',
-                mime='text/csv',
-                help="Downloads the visible Filtered Reasons table."
-            )
-        # --- END Download Filtered Aggregated Results ---
+    with filter_down_col2:
+        st.download_button(
+            label="Download Filtered SKUs (Excel) ⬇️",
+            data=excel_data_sku,
+            file_name='filtered_sku_summary_report.xlsx',
+            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            help=excel_help_text
+        )
+        
+    with filter_down_col3:
+        csv_data_reason = reason_display_data.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="Download Filtered Reasons (CSV) ⬇️",
+            data=csv_data_reason,
+            file_name='filtered_reason_summary.csv',
+            mime='text/csv',
+            help="Downloads the visible Filtered Reasons table."
+        )
+    # --- END Download Filtered Aggregated Results ---
 
-    else:
-        st.warning("No data found after processing. Please check your files or column names.")
 else:
-    st.info("Please upload your **Returns Data** and **Sales Data** from the sidebar to start the analysis.")
-    # 3. File Uploaders in sidebar
-st.sidebar.header("Step 1: Upload Returns Data")
-
-# --- DOWNLOAD TEMPLATE SECTION ---
-with st.sidebar.expander("📥 Download Return Data Templates"):
-    st.caption("Download sample templates showing the required column format for each platform.")
-    
-    # Create sample templates for each platform
-    template_platform = st.selectbox(
-        "Select Platform Template:",
-        options=['flipkart', 'ajio', 'amazon', 'meesho', 'firstcry', 'amazon_flex'],
-        format_func=lambda x: DISPLAY_NAME_MAPPING.get(x, x.capitalize()),
-        key='template_platform'
-    )
-    
-    # Generate sample data for selected platform
-    mapping = COLUMN_MAPPING[template_platform]
-    
-    if mapping.get('qty_col'):
-        template_data = {
-            mapping['sku_col']: ['SKU001', 'SKU002', 'SKU003'],
-            mapping['reason_col']: ['Size Issue', 'Quality Issue', 'Wrong Product'],
-            mapping['qty_col']: [1, 2, 1]
-        }
-    else:
-        template_data = {
-            mapping['sku_col']: ['SKU001', 'SKU002', 'SKU003'],
-            mapping['reason_col']: ['Size Issue', 'Quality Issue', 'Wrong Product']
-        }
-    
-    template_df = pd.DataFrame(template_data)
-    template_csv = template_df.to_csv(index=False).encode('utf-8')
-    
-    display_name = DISPLAY_NAME_MAPPING.get(template_platform, template_platform.capitalize())
-    st.download_button(
-        label=f"Download {display_name} Template (CSV) ⬇️",
-        data=template_csv,
-        file_name=f'{template_platform}_return_template.csv',
-        mime='text/csv',
-        help=f"Downloads a sample template with required columns: {', '.join(template_data.keys())}"
-    )
-# --- END DOWNLOAD TEMPLATE SECTION ---
-
-uploaded_returns_files = st.sidebar.file_uploader(
-    "Upload Returns files (.csv, .xlsx, or .zip)",
-    accept_multiple_files=True,
-    type=['xlsx', 'csv', 'zip'],
-    key='returns_uploader'
-)
+    st.warning("No data found after processing. Please check your files or column names.")
